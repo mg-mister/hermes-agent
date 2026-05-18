@@ -1,0 +1,5 @@
+name: personal-wiki
+version: 0.1.0
+description: "Bootstrap and validate a generic Git/Obsidian personal wiki with source-first curation, dashboards, templates, and privacy-first rules."
+author: NousResearch
+kind: standalone
