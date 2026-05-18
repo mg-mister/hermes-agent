@@ -1757,9 +1757,79 @@ class AIAgent:
                     state[path] = {
                         "tool": tool_name,
                         "error_preview": preview,
+                        "fingerprint": self._file_mutation_fingerprint(path),
                     }
         else:
             for path in targets:
+                state.pop(path, None)
+
+    @staticmethod
+    def _file_mutation_fingerprint(path: str) -> Dict[str, Any]:
+        """Return a lightweight content fingerprint for verifier recovery.
+
+        The file-mutation verifier primarily tracks ``write_file``/``patch``.
+        A later ``execute_code`` or terminal command can still fix the same
+        path, so failed entries must be pruned when the on-disk file actually
+        changes after the failed mutation attempt.
+        """
+        try:
+            from pathlib import Path as _Path
+            import hashlib as _hashlib
+
+            p = _Path(path).expanduser()
+            if not p.is_absolute():
+                p = (_Path.cwd() / p)
+            p = p.resolve(strict=False)
+            try:
+                st = p.stat()
+            except FileNotFoundError:
+                return {"exists": False, "path": str(p)}
+            except OSError as exc:
+                return {"exists": None, "path": str(p), "error": type(exc).__name__}
+            fp: Dict[str, Any] = {
+                "exists": True,
+                "path": str(p),
+                "is_file": p.is_file(),
+                "size": st.st_size,
+                "mtime_ns": getattr(st, "st_mtime_ns", None),
+            }
+            if p.is_file() and st.st_size <= 2 * 1024 * 1024:
+                try:
+                    fp["sha256"] = _hashlib.sha256(p.read_bytes()).hexdigest()
+                except OSError as exc:
+                    fp["read_error"] = type(exc).__name__
+            return fp
+        except Exception as exc:
+            return {"exists": None, "path": str(path), "error": type(exc).__name__}
+
+    @staticmethod
+    def _file_mutation_fingerprint_changed(before: Dict[str, Any], after: Dict[str, Any]) -> bool:
+        """Return True when a failed target changed after the failure."""
+        if before.get("sha256") is not None and after.get("sha256") is not None:
+            return before.get("sha256") != after.get("sha256")
+        # When content hashes are unavailable (for example unreadable or very
+        # large files), stay conservative: existence/type/size changes prove a
+        # write landed, but an mtime-only change may be a metadata touch and
+        # should not suppress a real failed-mutation footer.
+        keys = ("exists", "is_file", "size")
+        return any(before.get(k) != after.get(k) for k in keys)
+
+    def _prune_resolved_file_mutation_failures(self) -> None:
+        """Drop failed mutation entries that a later non-tracked tool fixed.
+
+        This prevents false verifier footers when a failed ``patch`` is later
+        corrected with ``execute_code`` or another non-``patch`` file edit in
+        the same turn.
+        """
+        state = getattr(self, "_turn_failed_file_mutations", None)
+        if not state:
+            return
+        for path, info in list(state.items()):
+            before = info.get("fingerprint")
+            if not isinstance(before, dict):
+                continue
+            after = self._file_mutation_fingerprint(path)
+            if self._file_mutation_fingerprint_changed(before, after):
                 state.pop(path, None)
 
     def _file_mutation_verifier_enabled(self) -> bool:

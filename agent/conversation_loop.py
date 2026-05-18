@@ -3915,6 +3915,7 @@ def run_conversation(
     # already have other surface text that shouldn't be augmented.
     if final_response and not interrupted:
         try:
+            agent._prune_resolved_file_mutation_failures()
             _failed = getattr(agent, "_turn_failed_file_mutations", None) or {}
             if _failed and agent._file_mutation_verifier_enabled():
                 footer = agent._format_file_mutation_failure_footer(_failed)

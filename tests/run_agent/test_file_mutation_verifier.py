@@ -268,6 +268,63 @@ class TestRecordFileMutationResult:
         # state is about file paths, not individual tool-call IDs.
         assert agent._turn_failed_file_mutations == {}
 
+    def test_prune_removes_failure_when_later_tool_changes_file(self, tmp_path):
+        target = tmp_path / "a.md"
+        target.write_text("before\n")
+        agent = _bare_agent()
+
+        agent._record_file_mutation_result(
+            "patch",
+            {"mode": "replace", "path": str(target), "old_string": "missing", "new_string": "after"},
+            json.dumps({"success": False, "error": "Could not find old_string"}),
+            is_error=True,
+        )
+        assert str(target) in agent._turn_failed_file_mutations
+
+        # Simulate recovery through execute_code/terminal instead of patch.
+        target.write_text("after\n")
+        agent._prune_resolved_file_mutation_failures()
+
+        assert agent._turn_failed_file_mutations == {}
+
+    def test_prune_keeps_failure_when_file_did_not_change(self, tmp_path):
+        target = tmp_path / "a.md"
+        target.write_text("same\n")
+        agent = _bare_agent()
+
+        agent._record_file_mutation_result(
+            "patch",
+            {"mode": "replace", "path": str(target), "old_string": "missing", "new_string": "after"},
+            json.dumps({"success": False, "error": "Could not find old_string"}),
+            is_error=True,
+        )
+        agent._prune_resolved_file_mutation_failures()
+
+        assert str(target) in agent._turn_failed_file_mutations
+
+    def test_prune_removes_failure_when_missing_file_later_created(self, tmp_path):
+        target = tmp_path / "new.md"
+        agent = _bare_agent()
+
+        agent._record_file_mutation_result(
+            "patch",
+            {"mode": "replace", "path": str(target), "old_string": "missing", "new_string": "after"},
+            json.dumps({"success": False, "error": "Could not find old_string"}),
+            is_error=True,
+        )
+        assert str(target) in agent._turn_failed_file_mutations
+
+        target.write_text("created\n")
+        agent._prune_resolved_file_mutation_failures()
+
+        assert agent._turn_failed_file_mutations == {}
+
+    def test_fingerprint_change_ignores_mtime_only_when_hash_unavailable(self):
+        before = {"exists": True, "is_file": True, "size": 4096, "mtime_ns": 1}
+        after = {"exists": True, "is_file": True, "size": 4096, "mtime_ns": 2}
+
+        assert AIAgent._file_mutation_fingerprint_changed(before, after) is False
+
 
 # ---------------------------------------------------------------------------
 # _format_file_mutation_failure_footer
