@@ -34,6 +34,22 @@ class TestCleanForDisplay:
         assert "MEDIA:" not in result
         assert "Audio generated" in result
 
+    def test_empty_media_tag_stripped(self):
+        """Empty MEDIA: control tag is removed."""
+        text = "Audio generated\nMEDIA:\nDone"
+        result = GatewayStreamConsumer._clean_for_display(text)
+        assert "MEDIA:" not in result
+        assert "Audio generated" in result
+        assert "Done" in result
+
+    def test_extensionless_media_tag_stripped(self):
+        """Extensionless absolute MEDIA placeholder is removed."""
+        text = "Result\nMEDIA:/absolute/path"
+        result = GatewayStreamConsumer._clean_for_display(text)
+        assert "MEDIA:" not in result
+        assert "/absolute/path" not in result
+        assert "Result" in result
+
     def test_media_tag_with_quotes(self):
         """MEDIA: tags wrapped in quotes or backticks are removed."""
         for wrapper in ['`MEDIA:/path/file.png`', '"MEDIA:/path/file.png"', "'MEDIA:/path/file.png'"]:

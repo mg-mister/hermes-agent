@@ -341,7 +341,7 @@ class TestRunBackgroundTask:
         )
         runner._run_in_executor_with_context = AsyncMock(
             return_value={
-                "final_response": "done\nMEDIA:/tmp/hermes-mockups-<name>.zip\nMEDIA:/tmp/definitely-missing-hermes-bg.png",
+                "final_response": "done\nMEDIA:/absolute/path\nMEDIA:\nMEDIA:/tmp/hermes-mockups-<name>.zip\nMEDIA:/tmp/definitely-missing-hermes-bg.png",
                 "messages": [],
             }
         )

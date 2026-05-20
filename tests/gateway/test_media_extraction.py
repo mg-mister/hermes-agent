@@ -199,6 +199,7 @@ class TestGatewayMediaPathGuardrail:
         "bad_path",
         [
             "/absolute/path.zip",
+            "/absolute/path",
             "/tmp/hermes-mockups-<name>.zip",
             "<screenshot_path>",
             "/tmp/definitely-missing-hermes-media-file.png",
@@ -212,6 +213,14 @@ class TestGatewayMediaPathGuardrail:
         assert bad_path not in cleaned
         assert "attached" in cleaned
         assert "Skipping MEDIA attachment with invalid path" in caplog.text
+
+    def test_extract_media_strips_empty_media_tag(self, caplog):
+        media, cleaned = BasePlatformAdapter.extract_media("attached\nMEDIA:\n")
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert "attached" in cleaned
+        assert "Skipping MEDIA attachment with invalid path (empty path)" in caplog.text
 
 
 if __name__ == "__main__":

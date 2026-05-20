@@ -2231,13 +2231,33 @@ class BasePlatformAdapter(ABC):
                 raw_path,
             )
 
+        # Finally catch malformed MEDIA control tags that deliberately do not
+        # match the valid local-file extractor above: empty ``MEDIA:`` and
+        # extensionless local placeholders such as ``MEDIA:/absolute/path``.
+        # They are still control syntax and should not leak into visible text.
+        malformed_media_pattern = re.compile(
+            r'''[`"']?MEDIA:[^\S\n]*(?P<path>(?:~/|/)\S+)?[`"']?'''
+        )
+        matched_malformed_media_tag = False
+        for match in malformed_media_pattern.finditer(content):
+            if media_pattern.fullmatch(match.group(0)) or placeholder_media_pattern.fullmatch(match.group(0)):
+                continue
+            matched_malformed_media_tag = True
+            raw_path = (match.group("path") or "").strip()
+            logger.warning(
+                "Skipping MEDIA attachment with invalid path (%s): %s",
+                _invalid_media_path_reason(raw_path) or "malformed media tag",
+                raw_path,
+            )
+
         # Remove MEDIA tags from content (including surrounding quote/backtick wrappers)
         # even when the extracted path was invalid.  Invalid tags are control
         # syntax, not user-facing text; leaving them visible invites retries with
         # the same placeholder path.
-        if matched_media_tag or matched_placeholder_media_tag:
+        if matched_media_tag or matched_placeholder_media_tag or matched_malformed_media_tag:
             cleaned = media_pattern.sub('', cleaned)
             cleaned = placeholder_media_pattern.sub('', cleaned)
+            cleaned = malformed_media_pattern.sub('', cleaned)
             cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
         
         return media, cleaned

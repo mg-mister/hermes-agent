@@ -640,9 +640,9 @@ class GatewayStreamConsumer:
             logger.error("Stream consumer error: %s", e)
 
     # Pattern to strip MEDIA:<path> tags (including optional surrounding quotes).
-    # Matches the simple cleanup regex used by the non-streaming path in
-    # gateway/platforms/base.py for post-processing.
-    _MEDIA_RE = re.compile(r'''[`"']?MEDIA:\s*\S+[`"']?''')
+    # Also strips empty MEDIA: control tags so malformed directives never leak
+    # into streamed user-visible text.
+    _MEDIA_RE = re.compile(r'''[`"']?MEDIA:[^\S\n]*\S*[`"']?''')
 
     @staticmethod
     def _clean_for_display(text: str) -> str:
