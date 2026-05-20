@@ -10,6 +10,8 @@ times per reply. (Regression test for #160)
 import pytest
 import re
 
+from gateway.platforms.base import BasePlatformAdapter
+
 
 def extract_media_tags_fixed(result_messages, history_len):
     """
@@ -178,6 +180,38 @@ class TestMediaExtraction:
         seen = set()
         unique = [t for t in tags if t not in seen and not seen.add(t)]
         assert len(unique) == 2  # After dedup: same.ogg and different.ogg
+
+
+class TestGatewayMediaPathGuardrail:
+    """Regression tests for invalid MEDIA paths reaching platform senders."""
+
+    def test_extract_media_keeps_existing_file_and_strips_tag(self, tmp_path):
+        media_file = tmp_path / "artifact.zip"
+        media_file.write_text("zip-ish")
+
+        media, cleaned = BasePlatformAdapter.extract_media(f"done\nMEDIA:{media_file}\n")
+
+        assert media == [(str(media_file), False)]
+        assert "MEDIA:" not in cleaned
+        assert "done" in cleaned
+
+    @pytest.mark.parametrize(
+        "bad_path",
+        [
+            "/absolute/path.zip",
+            "/tmp/hermes-mockups-<name>.zip",
+            "<screenshot_path>",
+            "/tmp/definitely-missing-hermes-media-file.png",
+        ],
+    )
+    def test_extract_media_strips_invalid_placeholder_or_missing_path(self, bad_path, caplog):
+        media, cleaned = BasePlatformAdapter.extract_media(f"attached\nMEDIA:{bad_path}\n")
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert bad_path not in cleaned
+        assert "attached" in cleaned
+        assert "Skipping MEDIA attachment with invalid path" in caplog.text
 
 
 if __name__ == "__main__":

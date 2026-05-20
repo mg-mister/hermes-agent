@@ -94,6 +94,7 @@ class ProcessSession:
     task_id: str = ""                           # Task/sandbox isolation key
     session_key: str = ""                       # Gateway session key (for reset protection)
     pid: Optional[int] = None                   # OS process ID
+    pgid: Optional[int] = None                  # POSIX process group ID for local background jobs
     process: Optional[subprocess.Popen] = None  # Popen handle (local only)
     env_ref: Any = None                         # Reference to the environment object
     cwd: Optional[str] = None                   # Working directory
@@ -439,6 +440,15 @@ class ProcessRegistry:
             os.kill(pid, signal.SIGTERM)
             return
 
+        # Prefer killing the process group first. Local background processes are
+        # spawned in a fresh session/process group, so this catches shell-spawned
+        # descendants that are no longer children of the shell by the time we
+        # reconcile or kill the tracked session.
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)  # windows-footgun: POSIX-only branch
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
         import psutil
         try:
             parent = psutil.Process(pid)
@@ -455,6 +465,24 @@ class ProcessRegistry:
                 os.kill(pid, signal.SIGTERM)
             except (OSError, ProcessLookupError, PermissionError):
                 pass
+
+    @staticmethod
+    def _terminate_local_process_group(pid: int, *, pgid: int | None = None, sig: int = signal.SIGTERM) -> None:
+        """Best-effort POSIX process-group termination for local background jobs."""
+        if _IS_WINDOWS:
+            return
+        target_pgid = pgid
+        if target_pgid is None and pid:
+            try:
+                target_pgid = os.getpgid(pid)
+            except (ProcessLookupError, PermissionError, OSError):
+                target_pgid = pid
+        if not target_pgid:
+            return
+        try:
+            os.killpg(int(target_pgid), sig)  # windows-footgun: POSIX-only branch
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
 
     # ----- Spawn -----
 
@@ -568,6 +596,11 @@ class ProcessRegistry:
 
         session.process = proc
         session.pid = proc.pid
+        if not _IS_WINDOWS:
+            try:
+                session.pgid = os.getpgid(proc.pid)
+            except (ProcessLookupError, PermissionError, OSError):
+                session.pgid = proc.pid
 
         try:
             # Start output reader thread
@@ -891,6 +924,16 @@ class ProcessRegistry:
         if rc is None:
             return  # Direct child still running — reader block is legitimate.
 
+        # Direct child exited.  Any descendant that still has the pipe open is
+        # now orphaned from Hermes' point of view; terminate the process group
+        # best-effort so shell-level ``cmd &`` / ``disown`` patterns do not keep
+        # consuming resources after the tracked session is marked complete.
+        self._terminate_local_process_group(
+            getattr(proc, "pid", 0),
+            pgid=getattr(session, "pgid", None),
+            sig=signal.SIGTERM,
+        )
+
         # Direct child exited. Try to drain any bytes the reader hasn't
         # consumed yet. This is best-effort: if the pipe is held open by a
         # descendant, the non-blocking read returns what's immediately
@@ -1092,11 +1135,19 @@ class ProcessRegistry:
                     if session.pid:
                         os.kill(session.pid, signal.SIGTERM)
             elif session.process:
-                # Local process -- kill the process tree
+                # Local process -- kill the process group/tree.  The process
+                # group catches shell-spawned descendants that have already
+                # detached from the direct shell process but are still in the
+                # session created by os.setsid at spawn time.
                 try:
                     if _IS_WINDOWS:
                         session.process.terminate()
                     else:
+                        self._terminate_local_process_group(
+                            session.process.pid,
+                            pgid=getattr(session, "pgid", None),
+                            sig=signal.SIGTERM,
+                        )
                         import psutil
                         try:
                             parent = psutil.Process(session.process.pid)
@@ -1310,6 +1361,7 @@ class ProcessRegistry:
                             "session_id": s.id,
                             "command": s.command,
                             "pid": s.pid,
+                            "pgid": s.pgid,
                             "pid_scope": s.pid_scope,
                             "cwd": s.cwd,
                             "started_at": s.started_at,
@@ -1375,6 +1427,7 @@ class ProcessRegistry:
                     task_id=entry.get("task_id", ""),
                     session_key=entry.get("session_key", ""),
                     pid=pid,
+                    pgid=entry.get("pgid"),
                     pid_scope=pid_scope,
                     cwd=entry.get("cwd"),
                     started_at=entry.get("started_at", time.time()),
@@ -1448,11 +1501,19 @@ def format_process_notification(evt: dict) -> "str | None":
 
     _exit = evt.get("exit_code", "?")
     _out = evt.get("output", "")
+    try:
+        _exit_int = int(_exit)
+    except (TypeError, ValueError):
+        _exit_int = None
+    _status = "completed successfully" if _exit_int == 0 else "finished"
+    _output_label = "Output"
+    if _exit_int == 0 and "[bat error]" in str(_out).lower():
+        _output_label = "Output (process output; exit code was successful)"
     return (
-        f"[IMPORTANT: Background process {_sid} completed "
+        f"[IMPORTANT: Background process {_sid} {_status} "
         f"(exit code {_exit}).\n"
         f"Command: {_cmd}\n"
-        f"Output:\n{_out}]"
+        f"{_output_label}:\n{_out}]"
     )
 
 

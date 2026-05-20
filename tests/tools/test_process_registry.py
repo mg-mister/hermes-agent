@@ -65,6 +65,22 @@ def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool
     return False
 
 
+def _pid_exists(pid: int) -> bool:
+    """Return True if a Linux /proc PID exists and is not a zombie."""
+    if not pid:
+        return False
+    stat_path = Path(f"/proc/{pid}/stat")
+    if not stat_path.exists():
+        return False
+    try:
+        parts = stat_path.read_text().split()
+        if len(parts) > 2 and parts[2] == "Z":
+            return False
+    except OSError:
+        return False
+    return True
+
+
 # =========================================================================
 # Get / Poll
 # =========================================================================
@@ -138,6 +154,7 @@ class TestOrphanedPipeReconciliation:
         s = _make_session(sid="proc_orphan_test")
         s.process = proc
         s.pid = proc.pid
+        s.pgid = os.getpgid(proc.pid)
         registry._running[s.id] = s
 
         # Wait for the direct child to exit. We don't start a reader thread,
@@ -160,11 +177,41 @@ class TestOrphanedPipeReconciliation:
         assert s.id in registry._finished
         assert s.id not in registry._running
 
-        # Clean up the orphaned descendant.
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
+        # The reconciler now owns cleanup of same-process-group descendants.
+        assert _wait_until(lambda: not _pid_exists(proc.pid) or proc.poll() is not None, timeout=1.0)
+
+    def test_reconcile_terminates_same_group_orphan_descendant(self, registry, tmp_path):
+        """Shell-level backgrounding must not leave a resource-consuming child."""
+        pid_file = tmp_path / "sleep.pid"
+        proc = subprocess.Popen(
+            [
+                "sh",
+                "-c",
+                f"( sleep 30 ) & echo $! > {pid_file}; exit 0",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            preexec_fn=os.setsid,
+        )
+
+        s = _make_session(sid="proc_orphan_cleanup_test")
+        s.process = proc
+        s.pid = proc.pid
+        s.pgid = os.getpgid(proc.pid)
+        registry._running[s.id] = s
+
+        assert _wait_until(lambda: proc.poll() is not None, timeout=5.0)
+        assert _wait_until(lambda: pid_file.exists(), timeout=5.0)
+        child_pid = int(pid_file.read_text().strip())
+        assert _pid_exists(child_pid), "test precondition: child sleep should be alive"
+
+        result = registry.poll(s.id)
+
+        assert result["status"] == "exited"
+        assert _wait_until(lambda: not _pid_exists(child_pid), timeout=5.0), (
+            "same-process-group descendant should be terminated when the direct "
+            "background-process shell has exited"
+        )
 
     def test_reconcile_noop_when_child_still_running(self, registry):
         """Reconcile must NOT flip exited when the direct child is alive."""
@@ -172,6 +219,7 @@ class TestOrphanedPipeReconciliation:
         s = _make_session(sid="proc_running_test")
         s.process = proc
         s.pid = proc.pid
+        s.pgid = os.getpgid(proc.pid)
         registry._running[s.id] = s
 
         result = registry.poll(s.id)
@@ -212,6 +260,7 @@ class TestOrphanedPipeReconciliation:
         s = _make_session(sid="proc_wait_orphan")
         s.process = proc
         s.pid = proc.pid
+        s.pgid = os.getpgid(proc.pid)
         registry._running[s.id] = s
 
         assert _wait_until(lambda: proc.poll() is not None, timeout=5.0)
@@ -890,10 +939,39 @@ def test_format_completion_event():
         "output": "done",
     }
     result = format_process_notification(evt)
-    assert "[IMPORTANT: Background process proc_abc completed" in result
+    assert result is not None
+    assert "[IMPORTANT: Background process proc_abc completed successfully" in result
     assert "exit code 0" in result
     assert "Command: sleep 5" in result
     assert "Output:\ndone]" in result
+
+
+def test_format_successful_completion_with_bat_error_labels_output_as_process_output():
+    evt = {
+        "type": "completion",
+        "session_id": "proc_bat",
+        "command": "agent run",
+        "exit_code": 0,
+        "output": "[bat error]: 'Extended': No such file or directory (os error 2)",
+    }
+    result = format_process_notification(evt)
+    assert result is not None
+    assert "completed successfully" in result
+    assert "Output (process output; exit code was successful):" in result
+    assert "[bat error]" in result
+
+
+def test_format_failed_completion_uses_finished_status():
+    evt = {
+        "type": "completion",
+        "session_id": "proc_fail",
+        "command": "agent run",
+        "exit_code": 1,
+        "output": "failed",
+    }
+    result = format_process_notification(evt)
+    assert result is not None
+    assert "Background process proc_fail finished (exit code 1)" in result
 
 
 def test_format_watch_match_event():

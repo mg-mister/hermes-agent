@@ -321,6 +321,159 @@ class TestRunBackgroundTask:
         }
 
     @pytest.mark.asyncio
+    async def test_background_completion_strips_invalid_media_before_platform_send(self, monkeypatch, caplog):
+        """Invalid MEDIA paths in background results must not reach platform senders."""
+        from gateway import run as gateway_run
+        from gateway.platforms.base import BasePlatformAdapter
+
+        runner = _make_runner()
+        runner._resolve_session_agent_runtime = MagicMock(
+            return_value=("test-model", {"api_key": "test-key"})
+        )
+        runner._resolve_session_reasoning_config = MagicMock(return_value=None)
+        runner._load_service_tier = MagicMock(return_value=None)
+        runner._resolve_turn_agent_config = MagicMock(
+            return_value={
+                "model": "test-model",
+                "runtime": {"api_key": "test-key"},
+                "request_overrides": None,
+            }
+        )
+        runner._run_in_executor_with_context = AsyncMock(
+            return_value={
+                "final_response": "done\nMEDIA:/tmp/hermes-mockups-<name>.zip\nMEDIA:/tmp/definitely-missing-hermes-bg.png",
+                "messages": [],
+            }
+        )
+        monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
+
+        mock_adapter = AsyncMock()
+        mock_adapter.send = AsyncMock()
+        mock_adapter.send_document = AsyncMock()
+        mock_adapter.extract_media = MagicMock(side_effect=BasePlatformAdapter.extract_media)
+        mock_adapter.extract_images = MagicMock(return_value=([], "done"))
+        runner.adapters[Platform.TELEGRAM] = mock_adapter
+
+        source = SessionSource(
+            platform=Platform.TELEGRAM,
+            user_id="12345",
+            chat_id="67890",
+            user_name="testuser",
+        )
+
+        await runner._run_background_task("make artifact", source, "bg_test")
+
+        mock_adapter.send.assert_called_once()
+        sent_content = mock_adapter.send.call_args.kwargs["content"]
+        assert "Background task complete" in sent_content
+        assert "done" in sent_content
+        assert "MEDIA:" not in sent_content
+        mock_adapter.send_document.assert_not_called()
+        assert "Skipping MEDIA attachment with invalid path" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_background_completion_sends_valid_media_path(self, monkeypatch, tmp_path):
+        """Valid MEDIA paths in background results still upload as native files."""
+        from gateway import run as gateway_run
+        from gateway.platforms.base import BasePlatformAdapter
+
+        media_file = tmp_path / "artifact.zip"
+        media_file.write_text("zip-ish")
+
+        runner = _make_runner()
+        runner._resolve_session_agent_runtime = MagicMock(
+            return_value=("test-model", {"api_key": "test-key"})
+        )
+        runner._resolve_session_reasoning_config = MagicMock(return_value=None)
+        runner._load_service_tier = MagicMock(return_value=None)
+        runner._resolve_turn_agent_config = MagicMock(
+            return_value={
+                "model": "test-model",
+                "runtime": {"api_key": "test-key"},
+                "request_overrides": None,
+            }
+        )
+        runner._run_in_executor_with_context = AsyncMock(
+            return_value={
+                "final_response": f"done\nMEDIA:{media_file}",
+                "messages": [],
+            }
+        )
+        monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
+
+        mock_adapter = AsyncMock()
+        mock_adapter.send = AsyncMock()
+        mock_adapter.send_document = AsyncMock()
+        mock_adapter.extract_media = MagicMock(side_effect=BasePlatformAdapter.extract_media)
+        mock_adapter.extract_images = MagicMock(return_value=([], "done"))
+        runner.adapters[Platform.TELEGRAM] = mock_adapter
+
+        source = SessionSource(
+            platform=Platform.TELEGRAM,
+            user_id="12345",
+            chat_id="67890",
+            user_name="testuser",
+        )
+
+        await runner._run_background_task("make artifact", source, "bg_test")
+
+        mock_adapter.send.assert_called_once()
+        sent_content = mock_adapter.send.call_args.kwargs["content"]
+        assert "done" in sent_content
+        assert "MEDIA:" not in sent_content
+        mock_adapter.send_document.assert_called_once_with(
+            chat_id="67890",
+            file_path=str(media_file),
+            metadata=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_background_completion_final_guard_blocks_bad_adapter_media(self, monkeypatch, caplog):
+        """The /background send loop revalidates media paths before adapter delivery."""
+        from gateway import run as gateway_run
+
+        runner = _make_runner()
+        runner._resolve_session_agent_runtime = MagicMock(
+            return_value=("test-model", {"api_key": "test-key"})
+        )
+        runner._resolve_session_reasoning_config = MagicMock(return_value=None)
+        runner._load_service_tier = MagicMock(return_value=None)
+        runner._resolve_turn_agent_config = MagicMock(
+            return_value={
+                "model": "test-model",
+                "runtime": {"api_key": "test-key"},
+                "request_overrides": None,
+            }
+        )
+        runner._run_in_executor_with_context = AsyncMock(
+            return_value={"final_response": "done MEDIA:/tmp/missing-bg.zip", "messages": []}
+        )
+        monkeypatch.setattr(gateway_run, "_load_gateway_config", lambda: {})
+
+        mock_adapter = AsyncMock()
+        mock_adapter.send = AsyncMock()
+        mock_adapter.send_document = AsyncMock()
+        # Simulate a custom/stale adapter extraction path that did not filter
+        # the nonexistent MEDIA path.  GatewayRunner must still guard before
+        # sending to the platform adapter.
+        mock_adapter.extract_media = MagicMock(return_value=([("/tmp/missing-bg.zip", False)], "done"))
+        mock_adapter.extract_images = MagicMock(return_value=([], "done"))
+        runner.adapters[Platform.TELEGRAM] = mock_adapter
+
+        source = SessionSource(
+            platform=Platform.TELEGRAM,
+            user_id="12345",
+            chat_id="67890",
+            user_name="testuser",
+        )
+
+        await runner._run_background_task("make artifact", source, "bg_test")
+
+        mock_adapter.send.assert_called_once()
+        mock_adapter.send_document.assert_not_called()
+        assert "Skipping background MEDIA attachment with invalid path" in caplog.text
+
+    @pytest.mark.asyncio
     async def test_agent_cleanup_runs_when_background_agent_raises(self):
         """Temporary background agents must be cleaned up on error paths too."""
         runner = _make_runner()

@@ -4839,6 +4839,48 @@ def call_llm(
                     effective_extra_body=effective_extra_body,
                 )
 
+        # ── Connection retry on a fresh client ────────────────────────
+        # A mid-stream close often leaves the cached HTTP client/transport in
+        # a bad state.  Before falling back to a different provider, evict the
+        # poisoned client and retry once against the same resolved provider.
+        # This keeps transient compression/context-summary failures local when
+        # the provider is healthy on a fresh connection.
+        if _is_connection_error(first_err):
+            try:
+                _evict_cached_client_instance(client)
+            except Exception:
+                logger.debug("Auxiliary: cache eviction before connection retry failed",
+                             exc_info=True)
+            logger.info(
+                "Auxiliary %s: connection error on %s (%s), retrying once with a fresh client",
+                task or "call", resolved_provider, first_err,
+            )
+            try:
+                return _retry_same_provider_sync(
+                    task=task,
+                    resolved_provider=resolved_provider,
+                    resolved_model=resolved_model,
+                    resolved_base_url=resolved_base_url,
+                    resolved_api_key=resolved_api_key,
+                    resolved_api_mode=resolved_api_mode,
+                    main_runtime=main_runtime,
+                    final_model=final_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                    effective_timeout=effective_timeout,
+                    effective_extra_body=effective_extra_body,
+                )
+            except Exception as retry_err:
+                if not (
+                    _is_payment_error(retry_err)
+                    or _is_connection_error(retry_err)
+                    or _is_rate_limit_error(retry_err)
+                ):
+                    raise
+                first_err = retry_err
+
         # ── Payment / credit exhaustion fallback ──────────────────────
         # When the resolved provider returns 402 or a credit-related error,
         # try alternative providers instead of giving up.  This handles the
@@ -5216,6 +5258,42 @@ async def async_call_llm(
                     effective_timeout=effective_timeout,
                     effective_extra_body=effective_extra_body,
                 )
+
+        # ── Connection retry on a fresh client (mirrors sync) ─────────
+        if _is_connection_error(first_err):
+            try:
+                _evict_cached_client_instance(client)
+            except Exception:
+                logger.debug("Auxiliary (async): cache eviction before connection retry failed",
+                             exc_info=True)
+            logger.info(
+                "Auxiliary %s (async): connection error on %s (%s), retrying once with a fresh client",
+                task or "call", resolved_provider, first_err,
+            )
+            try:
+                return await _retry_same_provider_async(
+                    task=task,
+                    resolved_provider=resolved_provider,
+                    resolved_model=resolved_model,
+                    resolved_base_url=resolved_base_url,
+                    resolved_api_key=resolved_api_key,
+                    resolved_api_mode=resolved_api_mode,
+                    final_model=final_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                    effective_timeout=effective_timeout,
+                    effective_extra_body=effective_extra_body,
+                )
+            except Exception as retry_err:
+                if not (
+                    _is_payment_error(retry_err)
+                    or _is_connection_error(retry_err)
+                    or _is_rate_limit_error(retry_err)
+                ):
+                    raise
+                first_err = retry_err
 
         # ── Payment / connection / rate-limit fallback (mirrors sync call_llm) ──
         should_fallback = (

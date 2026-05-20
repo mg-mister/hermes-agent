@@ -45,6 +45,7 @@ import logging
 import os
 import re
 import asyncio
+import html as html_lib
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import httpx  # noqa: F401 — kept at module top so tests can patch tools.web_tools.httpx
 # After the web-provider plugin migration (PR #25182), the Firecrawl SDK
@@ -187,6 +188,205 @@ def _get_extract_backend() -> str:
     3. Auto-detect from env vars
     """
     return _get_capability_backend("extract")
+
+
+def _web_extract_auth_failure_text(text: Any) -> bool:
+    """Return True for backend auth/key failures that merit fallback.
+
+    Availability checks are intentionally cheap and cannot validate that a key
+    is still accepted by the upstream API. If the configured extract backend
+    reaches the network and then reports an auth failure (for example Tavily
+    ``401 Unauthorized``), try another configured/available extract provider
+    before surfacing the error to the agent.
+    """
+    lowered = str(text or "").lower()
+    return any(
+        needle in lowered
+        for needle in (
+            "401",
+            "unauthorized",
+            "unauthorised",
+            "invalid api key",
+            "invalid_api_key",
+            "api key is invalid",
+            "authentication failed",
+            "unauthenticated",
+        )
+    )
+
+
+def _web_extract_results_are_auth_failure(results: Any) -> bool:
+    """Detect provider result lists that represent only auth failures."""
+    if not isinstance(results, list) or not results:
+        return False
+
+    saw_error = False
+    for item in results:
+        if not isinstance(item, dict):
+            return False
+        if item.get("content") or item.get("raw_content"):
+            return False
+        error = item.get("error")
+        if not error:
+            return False
+        saw_error = True
+        if not _web_extract_auth_failure_text(error):
+            return False
+    return saw_error
+
+
+def _web_extract_fallback_candidates(primary_provider: Any) -> List[Any]:
+    """Return available extract providers excluding the current provider."""
+    try:
+        from agent.web_search_registry import list_providers
+    except Exception:  # noqa: BLE001 - registry import should not mask original failures
+        return []
+
+    primary_name = getattr(primary_provider, "name", None)
+    preference = {
+        name: idx for idx, name in enumerate(
+            ("firecrawl", "parallel", "tavily", "exa", "searxng", "brave-free", "ddgs")
+        )
+    }
+    candidates = []
+    for candidate in list_providers():
+        if getattr(candidate, "name", None) == primary_name:
+            continue
+        try:
+            if not candidate.supports_extract():
+                continue
+            if not candidate.is_available():
+                continue
+        except Exception:  # noqa: BLE001 - skip buggy/unavailable fallback providers
+            continue
+        candidates.append(candidate)
+    candidates.sort(key=lambda p: (preference.get(getattr(p, "name", ""), 999), getattr(p, "name", "")))
+    return candidates
+
+
+def _html_page_to_text(markup: str) -> tuple[str, str]:
+    """Very small dependency-free HTML-to-text fallback for web_extract."""
+    title = ""
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", markup, flags=re.IGNORECASE | re.DOTALL)
+    if title_match:
+        title = html_lib.unescape(re.sub(r"\s+", " ", title_match.group(1))).strip()
+
+    text = re.sub(r"<script\b[^>]*>[\s\S]*?</script>", " ", markup, flags=re.IGNORECASE)
+    text = re.sub(r"<style\b[^>]*>[\s\S]*?</style>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</(?:p|div|section|article|header|footer|li|h[1-6]|tr)>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    content = "\n".join(line for line in lines if line).strip()
+    return title, content
+
+
+async def _direct_http_extract(urls: List[str], *, format: str) -> List[Dict[str, Any]]:
+    """Last-resort direct fetch when API-backed extract auth is broken.
+
+    This is intentionally conservative: SSRF filtering has already run, we use
+    a short timeout, follow redirects, and only perform basic HTML/text cleanup.
+    Rich PDF/JS-heavy extraction still belongs to dedicated providers.
+    """
+    del format  # currently plain markdown-ish text only
+    results: List[Dict[str, Any]] = []
+    headers = {"User-Agent": "HermesWebExtract/1.0 (+https://hermes-agent.nousresearch.com)"}
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers) as client:
+        for url in urls:
+            try:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "").lower()
+                raw = resp.text
+                if "html" in content_type or "<html" in raw[:500].lower():
+                    title, content = _html_page_to_text(raw)
+                else:
+                    title = ""
+                    content = raw.strip()
+                if len(content) > 2_000_000:
+                    content = content[:2_000_000] + "\n\n...[truncated]"
+                results.append({
+                    "url": str(resp.url),
+                    "title": title,
+                    "content": content,
+                    "raw_content": content,
+                    "metadata": {"backend": "direct-http"},
+                })
+            except Exception as exc:  # noqa: BLE001
+                results.append({"url": url, "title": "", "content": "", "error": f"Direct HTTP extract failed: {exc}"})
+    return results
+
+
+async def _call_web_extract_provider(provider: Any, urls: List[str], *, format: str) -> List[Dict[str, Any]]:
+    """Call a provider's sync or async extract implementation."""
+    import inspect
+
+    if inspect.iscoroutinefunction(provider.extract):
+        return await provider.extract(urls, format=format)
+    # Run sync extract() in a thread so we don't block the event loop on
+    # network I/O.
+    return await asyncio.to_thread(provider.extract, urls, format=format)
+
+
+async def _call_web_extract_with_auth_fallback(
+    provider: Any,
+    urls: List[str],
+    *,
+    format: str,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, str]]]:
+    """Call the selected provider, falling back once auth is known-bad."""
+    fallbacks: List[Dict[str, str]] = []
+    try:
+        results = await _call_web_extract_provider(provider, urls, format=format)
+    except Exception as exc:  # noqa: BLE001 - preserve non-auth provider failures
+        if not _web_extract_auth_failure_text(exc):
+            raise
+        last_error: BaseException | None = exc
+        results = None
+    else:
+        if not _web_extract_results_are_auth_failure(results):
+            return results, fallbacks
+        last_error = None
+
+    for fallback in _web_extract_fallback_candidates(provider):
+        logger.warning(
+            "Web extract backend %s failed authentication; trying fallback %s",
+            getattr(provider, "name", "unknown"),
+            getattr(fallback, "name", "unknown"),
+        )
+        try:
+            fallback_results = await _call_web_extract_provider(fallback, urls, format=format)
+        except Exception as exc:  # noqa: BLE001
+            if _web_extract_auth_failure_text(exc):
+                last_error = exc
+                continue
+            raise
+        if _web_extract_results_are_auth_failure(fallback_results):
+            continue
+        fallbacks.append({
+            "from": getattr(provider, "name", "unknown"),
+            "to": getattr(fallback, "name", "unknown"),
+            "reason": "auth",
+        })
+        return fallback_results, fallbacks
+
+    logger.warning(
+        "Web extract backend %s failed authentication; trying direct HTTP fallback",
+        getattr(provider, "name", "unknown"),
+    )
+    direct_results = await _direct_http_extract(urls, format=format)
+    if not _web_extract_results_are_auth_failure(direct_results):
+        fallbacks.append({
+            "from": getattr(provider, "name", "unknown"),
+            "to": "direct-http",
+            "reason": "auth",
+        })
+        return direct_results, fallbacks
+
+    if last_error is not None:
+        raise last_error
+    return results or [], fallbacks
 
 
 def _get_capability_backend(capability: str) -> str:
@@ -913,6 +1113,8 @@ async def web_extract_tool(
         # ── SSRF protection — filter out private/internal URLs before any backend ──
         safe_urls = []
         ssrf_blocked: List[Dict[str, Any]] = []
+        backend_fallbacks: List[Dict[str, str]] = []
+        results: List[Dict[str, Any]] = []
         for url in urls:
             if not is_safe_url(url):
                 ssrf_blocked.append({
@@ -926,6 +1128,8 @@ async def web_extract_tool(
         if not safe_urls:
             results = []
         else:
+            cfg = _load_web_config()
+            explicit_extract_backend = bool((cfg.get("extract_backend") or cfg.get("backend") or "").strip())
             backend = _get_extract_backend()
 
             # All seven providers (brave-free, ddgs, searxng, exa, parallel,
@@ -941,6 +1145,7 @@ async def web_extract_tool(
             )
 
             provider = _wsp_get_provider(backend) if backend else None
+            direct_extract_used = False
             if provider is None or not provider.supports_extract():
                 # When the configured name IS registered but doesn't support
                 # extract (search-only providers like brave-free / ddgs /
@@ -949,19 +1154,70 @@ async def web_extract_tool(
                 # isn't registered at all (typo / uninstalled plugin), fall
                 # through to the active-provider walk.
                 if provider is not None and not provider.supports_extract():
+                    if not explicit_extract_backend:
+                        logger.warning(
+                            "Auto-detected web backend %s is search-only; trying direct HTTP extract fallback",
+                            provider.name,
+                        )
+                        results = await _direct_http_extract(safe_urls, format=format)
+                        backend_fallbacks.append({
+                            "from": provider.name,
+                            "to": "direct-http",
+                            "reason": "search-only-auto-detect",
+                        })
+                        direct_extract_used = True
+                        provider = None
+                    else:
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "error": (
+                                    f"{provider.display_name} is a search-only "
+                                    "backend and cannot extract URL content. "
+                                    "Set web.extract_backend to firecrawl, "
+                                    "tavily, exa, or parallel."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+                elif provider is None and not explicit_extract_backend:
+                    logger.warning(
+                        "No extract provider registered/available; trying direct HTTP extract fallback"
+                    )
+                    results = await _direct_http_extract(safe_urls, format=format)
+                    backend_fallbacks.append({
+                        "from": backend or "none",
+                        "to": "direct-http",
+                        "reason": "no-extract-provider",
+                    })
+                    direct_extract_used = True
+                elif provider is None and explicit_extract_backend and backend in {"ddgs", "brave-free", "searxng"}:
                     return json.dumps(
                         {
                             "success": False,
                             "error": (
-                                f"{provider.display_name} is a search-only "
-                                "backend and cannot extract URL content. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
+                                f"{backend} is a search-only backend and cannot extract URL content. "
+                                "Set web.extract_backend to firecrawl, tavily, exa, or parallel."
                             ),
                         },
                         ensure_ascii=False,
                     )
-                provider = get_active_extract_provider()
+                if not direct_extract_used:
+                    provider = get_active_extract_provider()
+                    if provider is None:
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "error": (
+                                    "No web extract provider configured. "
+                                    "Set web.extract_backend to firecrawl, "
+                                    "tavily, exa, or parallel."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+
+            if not direct_extract_used:
                 if provider is None:
                     return json.dumps(
                         {
@@ -974,28 +1230,24 @@ async def web_extract_tool(
                         },
                         ensure_ascii=False,
                     )
-
-            logger.info(
-                "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
-            )
-
-            # Async-or-sync dispatch: parallel + firecrawl have async
-            # extract(); exa + tavily are sync.
-            import inspect
-            if inspect.iscoroutinefunction(provider.extract):
-                results = await provider.extract(safe_urls, format=format)
-            else:
-                # Run sync extract() in a thread so we don't block the
-                # event loop on network I/O.
-                results = await asyncio.to_thread(
-                    provider.extract, safe_urls, format=format
+                logger.info(
+                    "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
                 )
+
+                results, provider_fallbacks = await _call_web_extract_with_auth_fallback(
+                    provider,
+                    safe_urls,
+                    format=format,
+                )
+                backend_fallbacks.extend(provider_fallbacks)
 
         # Merge any SSRF-blocked results back in
         if ssrf_blocked:
             results = ssrf_blocked + results
 
         response = {"results": results}
+        if backend_fallbacks:
+            response["backend_fallbacks"] = backend_fallbacks
         
         pages_extracted = len(response.get('results', []))
         logger.info("Extracted content from %d pages", pages_extracted)
@@ -1099,6 +1351,8 @@ async def web_extract_tool(
             for r in response.get("results", [])
         ]
         trimmed_response = {"results": trimmed_results}
+        if response.get("backend_fallbacks"):
+            trimmed_response["backend_fallbacks"] = response["backend_fallbacks"]
 
         if trimmed_response.get("results") == []:
             result_json = tool_error("Content was inaccessible or not found")

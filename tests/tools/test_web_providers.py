@@ -277,6 +277,9 @@ class TestUnconfiguredErrorEnvelopeParity:
     """
 
     def _clear_web_creds(self, monkeypatch):
+        from tools import web_tools
+
+        monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: False)
         for k in (
             "BRAVE_SEARCH_API_KEY",
             "SEARXNG_URL",
@@ -332,3 +335,186 @@ class TestUnconfiguredErrorEnvelopeParity:
         assert "web_crawl requires Firecrawl" in result["error"]
         # Crucially: no per-page burying
         assert "results" not in result
+
+
+class TestWebExtractFallbackOnBackendAuthFailure:
+    """Configured extract backends that fail at call-time with auth errors
+    should not prevent extraction when another extract provider is usable.
+    """
+
+    @pytest.mark.asyncio
+    async def test_extract_falls_back_after_configured_backend_401(self, monkeypatch):
+        import json
+
+        from agent import web_search_registry
+        from agent.web_search_provider import WebSearchProvider
+        from tools import web_tools
+
+        class FailingTavily(WebSearchProvider):
+            @property
+            def name(self) -> str:
+                return "tavily"
+
+            @property
+            def display_name(self) -> str:
+                return "Tavily"
+
+            def is_available(self) -> bool:
+                return True
+
+            def supports_extract(self) -> bool:
+                return True
+
+            def extract(self, urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+                raise RuntimeError("Tavily extract error: 401 Unauthorized")
+
+        class WorkingFirecrawl(WebSearchProvider):
+            @property
+            def name(self) -> str:
+                return "firecrawl"
+
+            @property
+            def display_name(self) -> str:
+                return "Firecrawl"
+
+            def is_available(self) -> bool:
+                return True
+
+            def supports_extract(self) -> bool:
+                return True
+
+            async def extract(self, urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+                return [{"url": urls[0], "title": "fallback", "content": "fallback content"}]
+
+        web_search_registry._reset_for_tests()
+        web_search_registry.register_provider(FailingTavily())
+        web_search_registry.register_provider(WorkingFirecrawl())
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "tavily"})
+        monkeypatch.setenv("TAVILY_API_KEY", "configured-but-invalid")
+
+        try:
+            result = json.loads(await web_tools.web_extract_tool(
+                ["https://example.com"],
+                use_llm_processing=False,
+            ))
+        finally:
+            web_search_registry._reset_for_tests()
+
+        assert result["results"][0]["content"] == "fallback content"
+        assert result.get("backend_fallbacks") == [
+            {"from": "tavily", "to": "firecrawl", "reason": "auth"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_extract_uses_direct_http_when_auth_backend_has_no_provider_fallback(self, monkeypatch):
+        import json
+
+        from agent import web_search_registry
+        from agent.web_search_provider import WebSearchProvider
+        from tools import web_tools
+
+        class FailingTavily(WebSearchProvider):
+            @property
+            def name(self) -> str:
+                return "tavily"
+
+            def is_available(self) -> bool:
+                return True
+
+            def supports_extract(self) -> bool:
+                return True
+
+            def extract(self, urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+                return [{"url": urls[0], "title": "", "content": "", "error": "401 Unauthorized"}]
+
+        async def fake_direct(urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+            return [{"url": urls[0], "title": "direct", "content": "direct content"}]
+
+        web_search_registry._reset_for_tests()
+        web_search_registry.register_provider(FailingTavily())
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "tavily"})
+        monkeypatch.setattr(web_tools, "_direct_http_extract", fake_direct)
+        monkeypatch.setenv("TAVILY_API_KEY", "configured-but-invalid")
+
+        try:
+            result = json.loads(await web_tools.web_extract_tool(
+                ["https://example.com"],
+                use_llm_processing=False,
+            ))
+        finally:
+            web_search_registry._reset_for_tests()
+
+        assert result["results"][0]["content"] == "direct content"
+        assert result.get("backend_fallbacks") == [
+            {"from": "tavily", "to": "direct-http", "reason": "auth"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_extract_uses_direct_http_when_auto_detect_picks_search_only_backend(self, monkeypatch):
+        import json
+
+        from agent import web_search_registry
+        from agent.web_search_provider import WebSearchProvider
+        from tools import web_tools
+
+        class SearchOnlyDDGS(WebSearchProvider):
+            @property
+            def name(self) -> str:
+                return "ddgs"
+
+            @property
+            def display_name(self) -> str:
+                return "DuckDuckGo (ddgs)"
+
+            def is_available(self) -> bool:
+                return True
+
+            def supports_search(self) -> bool:
+                return True
+
+        async def fake_direct(urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+            return [{"url": urls[0], "title": "direct", "content": "direct content"}]
+
+        web_search_registry._reset_for_tests()
+        web_search_registry.register_provider(SearchOnlyDDGS())
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {})
+        monkeypatch.setattr(web_tools, "_get_extract_backend", lambda: "ddgs")
+        monkeypatch.setattr(web_tools, "_direct_http_extract", fake_direct)
+
+        try:
+            result = json.loads(await web_tools.web_extract_tool(
+                ["https://example.com"],
+                use_llm_processing=False,
+            ))
+        finally:
+            web_search_registry._reset_for_tests()
+
+        assert result["results"][0]["content"] == "direct content"
+        assert result.get("backend_fallbacks") == [
+            {"from": "ddgs", "to": "direct-http", "reason": "search-only-auto-detect"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_extract_uses_direct_http_when_no_extract_provider_registered(self, monkeypatch):
+        import json
+
+        from agent import web_search_registry
+        from tools import web_tools
+
+        async def fake_direct(urls: List[str], **kwargs: Any) -> List[Dict[str, Any]]:
+            return [{"url": urls[0], "title": "direct", "content": "direct content"}]
+
+        web_search_registry._reset_for_tests()
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {})
+        monkeypatch.setattr(web_tools, "_get_extract_backend", lambda: "ddgs")
+        monkeypatch.setattr(web_tools, "_direct_http_extract", fake_direct)
+
+        result = json.loads(await web_tools.web_extract_tool(
+            ["https://example.com"],
+            use_llm_processing=False,
+        ))
+
+        assert result["results"][0]["content"] == "direct content"
+        assert result.get("backend_fallbacks") == [
+            {"from": "ddgs", "to": "direct-http", "reason": "no-extract-provider"}
+        ]

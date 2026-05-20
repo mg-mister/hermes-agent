@@ -851,6 +851,65 @@ class TestAuxiliaryPoolAwareness:
         assert stale_client.chat.completions.create.await_count == 1
         assert fresh_async_client.chat.completions.create.await_count == 1
 
+    def test_call_llm_retries_connection_error_once_with_fresh_client_before_fallback(self):
+        stale_client = MagicMock()
+        stale_client.base_url = "https://example-llm.invalid/v1"
+        stale_client.chat.completions.create.side_effect = RuntimeError(
+            "peer closed connection without sending complete message body"
+        )
+
+        fresh_client = MagicMock()
+        fresh_client.base_url = "https://example-llm.invalid/v1"
+        fresh_client.chat.completions.create.return_value = {"ok": True}
+
+        with (
+            patch("agent.auxiliary_client._resolve_task_provider_model", return_value=("custom", "m", None, None, None)),
+            patch("agent.auxiliary_client._get_cached_client", side_effect=[(stale_client, "m"), (fresh_client, "m")]),
+            patch("agent.auxiliary_client._validate_llm_response", side_effect=lambda resp, _task: resp),
+            patch("agent.auxiliary_client._try_configured_fallback_chain") as fallback_chain,
+            patch("agent.auxiliary_client._try_main_agent_model_fallback") as main_fallback,
+        ):
+            result = call_llm(
+                task="compression",
+                messages=[{"role": "user", "content": "summarize"}],
+            )
+
+        assert result == {"ok": True}
+        assert stale_client.chat.completions.create.call_count == 1
+        assert fresh_client.chat.completions.create.call_count == 1
+        fallback_chain.assert_not_called()
+        main_fallback.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_call_llm_retries_connection_error_once_with_fresh_client_before_fallback(self):
+        stale_client = MagicMock()
+        stale_client.base_url = "https://example-llm.invalid/v1"
+        stale_client.chat.completions.create = AsyncMock(
+            side_effect=RuntimeError("response ended prematurely")
+        )
+
+        fresh_client = MagicMock()
+        fresh_client.base_url = "https://example-llm.invalid/v1"
+        fresh_client.chat.completions.create = AsyncMock(return_value={"ok": True})
+
+        with (
+            patch("agent.auxiliary_client._resolve_task_provider_model", return_value=("custom", "m", None, None, None)),
+            patch("agent.auxiliary_client._get_cached_client", side_effect=[(stale_client, "m"), (fresh_client, "m")]),
+            patch("agent.auxiliary_client._validate_llm_response", side_effect=lambda resp, _task: resp),
+            patch("agent.auxiliary_client._try_configured_fallback_chain") as fallback_chain,
+            patch("agent.auxiliary_client._try_main_agent_model_fallback") as main_fallback,
+        ):
+            result = await async_call_llm(
+                task="compression",
+                messages=[{"role": "user", "content": "summarize"}],
+            )
+
+        assert result == {"ok": True}
+        assert stale_client.chat.completions.create.await_count == 1
+        assert fresh_client.chat.completions.create.await_count == 1
+        fallback_chain.assert_not_called()
+        main_fallback.assert_not_called()
+
     def test_cached_gmi_client_keeps_explicit_slash_model_override(self):
         import agent.auxiliary_client as aux
 
