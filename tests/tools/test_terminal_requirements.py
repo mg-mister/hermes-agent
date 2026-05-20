@@ -1,5 +1,6 @@
 import importlib
 import logging
+import os
 
 import pytest
 
@@ -47,6 +48,25 @@ def test_local_terminal_requirements(monkeypatch, caplog):
 
     with caplog.at_level(logging.ERROR):
         ok = terminal_tool_module.check_terminal_requirements()
+
+    assert ok is True
+    assert "Terminal requirements check failed" not in caplog.text
+
+
+def test_local_terminal_requirements_survives_deleted_process_cwd(monkeypatch, caplog, tmp_path):
+    """Deleted process cwd should not disable terminal requirements discovery."""
+    _clear_terminal_env(monkeypatch)
+    monkeypatch.setenv("TERMINAL_ENV", "local")
+    original_cwd = os.getcwd()
+    deleted_cwd = tmp_path / "deleted-cwd"
+    deleted_cwd.mkdir()
+    os.chdir(deleted_cwd)
+    deleted_cwd.rmdir()
+    try:
+        with caplog.at_level(logging.ERROR):
+            ok = terminal_tool_module.check_terminal_requirements()
+    finally:
+        os.chdir(original_cwd)
 
     assert ok is True
     assert "Terminal requirements check failed" not in caplog.text
