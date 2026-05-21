@@ -9,6 +9,33 @@ times per reply. (Regression test for #160)
 
 import pytest
 import re
+from unittest.mock import AsyncMock
+
+from gateway.config import Platform, PlatformConfig
+from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
+from gateway.session import SessionSource, build_session_key
+
+
+class _CaptureAdapter(BasePlatformAdapter):
+    async def connect(self):
+        return True
+
+    async def disconnect(self):
+        return None
+
+    async def send(self, chat_id, content, reply_to=None, metadata=None):
+        return SendResult(success=True, message_id="sent-1")
+
+    async def get_chat_info(self, chat_id):
+        return {}
+
+
+def _text_event(text="hello"):
+    return MessageEvent(
+        text=text,
+        message_type=MessageType.TEXT,
+        source=SessionSource(platform=Platform.TELEGRAM, chat_id="chat-1", chat_type="dm"),
+    )
 
 
 def extract_media_tags_fixed(result_messages, history_len):
@@ -178,6 +205,77 @@ class TestMediaExtraction:
         seen = set()
         unique = [t for t in tags if t not in seen and not seen.add(t)]
         assert len(unique) == 2  # After dedup: same.ogg and different.ogg
+
+
+class TestGatewayMediaPathGuardrail:
+    """Regression tests for invalid MEDIA paths reaching platform senders."""
+
+    def test_extract_media_keeps_existing_file_and_strips_tag(self, tmp_path):
+        media_file = tmp_path / "artifact.zip"
+        media_file.write_text("zip-ish")
+
+        media, cleaned = BasePlatformAdapter.extract_media(f"done\nMEDIA:{media_file}\n")
+
+        assert media == [(str(media_file), False)]
+        assert "MEDIA:" not in cleaned
+        assert "done" in cleaned
+
+    @pytest.mark.parametrize(
+        "bad_path",
+        [
+            "/absolute/path.zip",
+            "/absolute/path",
+            "/tmp/hermes-mockups-<name>.zip",
+            "<screenshot_path>",
+            "/tmp/definitely-missing-hermes-media-file.png",
+        ],
+    )
+    def test_extract_media_strips_invalid_placeholder_or_missing_path(self, bad_path, caplog):
+        media, cleaned = BasePlatformAdapter.extract_media(f"attached\nMEDIA:{bad_path}\n")
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert bad_path not in cleaned
+        assert "attached" in cleaned
+        assert "Skipping MEDIA attachment with invalid path" in caplog.text
+
+    def test_extract_media_strips_empty_media_tag(self, caplog):
+        media, cleaned = BasePlatformAdapter.extract_media("attached\nMEDIA:\n")
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert "attached" in cleaned
+        assert "Skipping MEDIA attachment with invalid path (empty path)" in caplog.text
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "Use MEDIA: files only when the gateway should upload attachments.",
+            "Ordinary prose can mention MEDIA: without a path.",
+        ],
+    )
+    def test_extract_media_preserves_ordinary_media_prose(self, content, caplog):
+        media, cleaned = BasePlatformAdapter.extract_media(content)
+
+        assert media == []
+        assert cleaned == content
+        assert "Skipping MEDIA attachment" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_base_delivery_preserves_ordinary_media_prose(self):
+        content = "Use MEDIA: files only when the gateway should upload attachments."
+        adapter = _CaptureAdapter(PlatformConfig(enabled=True, token="t"), Platform.TELEGRAM)
+        adapter._message_handler = AsyncMock(return_value=content)
+        adapter._send_with_retry = AsyncMock(return_value=SendResult(success=True, message_id="sent-1"))
+        adapter._keep_typing = AsyncMock()
+        event = _text_event()
+
+        await adapter._process_message_background(event, build_session_key(event.source))
+
+        adapter._send_with_retry.assert_awaited_once()
+        await_args = adapter._send_with_retry.await_args
+        assert await_args is not None
+        assert await_args.kwargs["content"] == content
 
 
 if __name__ == "__main__":

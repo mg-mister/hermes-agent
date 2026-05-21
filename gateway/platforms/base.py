@@ -34,6 +34,35 @@ _TELEGRAM_AUDIO_ATTACHMENT_EXTS = frozenset({'.mp3', '.m4a'})
 _TELEGRAM_VOICE_EXTS = frozenset({'.ogg', '.opus'})
 
 
+def _invalid_media_path_reason(path: str) -> str | None:
+    """Return a reason when a MEDIA path should not be delivered.
+
+    ``MEDIA:`` tags are an instruction to upload an already-created local file.
+    Letting placeholders or nonexistent paths through makes platform adapters
+    call ``send_document`` / ``send_photo`` with bogus filenames and creates
+    noisy gateway errors.  Treat them as invalid attachments, strip the tag
+    from user-visible text, and log a controlled warning instead.
+    """
+    raw = str(path or "").strip()
+    if not raw:
+        return "empty path"
+
+    lowered = raw.lower()
+    if (
+        "<" in raw
+        or ">" in raw
+        or "placeholder" in lowered
+        or "screenshot_path" in lowered
+        or raw.startswith("/absolute/path")
+    ):
+        return "placeholder path"
+
+    expanded = os.path.expanduser(raw)
+    if not os.path.isfile(expanded):
+        return "file does not exist"
+    return None
+
+
 def _platform_name(platform) -> str:
     """Normalize a Platform enum / raw string into a lowercase name."""
     value = getattr(platform, "value", platform)
@@ -2161,17 +2190,75 @@ class BasePlatformAdapter(ABC):
         media_pattern = re.compile(
             r'''[`"']?MEDIA:\s*(?P<path>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|(?:~/|/)\S+(?:[^\S\n]+\S+)*?\.(?:png|jpe?g|gif|webp|mp4|mov|avi|mkv|webm|ogg|opus|mp3|wav|m4a|flac|epub|pdf|zip|rar|7z|docx?|xlsx?|pptx?|txt|csv|apk|ipa)(?=[\s`"',;:)\]}]|$))[`"']?'''
         )
+        matched_media_tag = False
         for match in media_pattern.finditer(content):
+            matched_media_tag = True
             path = match.group("path").strip()
             if len(path) >= 2 and path[0] == path[-1] and path[0] in "`\"'":
                 path = path[1:-1].strip()
             path = path.lstrip("`\"'").rstrip("`\"',.;:)}]")
-            if path:
-                media.append((os.path.expanduser(path), has_voice_tag))
+            if not path:
+                continue
+            expanded = os.path.expanduser(path)
+            invalid_reason = _invalid_media_path_reason(expanded)
+            if invalid_reason:
+                logger.warning(
+                    "Skipping MEDIA attachment with invalid path (%s): %s",
+                    invalid_reason,
+                    expanded,
+                )
+                continue
+            media.append((expanded, has_voice_tag))
+
+        # Also catch placeholder-style MEDIA tags that do not look like local
+        # files and therefore intentionally do not match ``media_pattern``
+        # above, e.g. ``MEDIA:<screenshot_path>``.
+        placeholder_media_pattern = re.compile(
+            r'''[`"']?MEDIA:\s*(?P<path><[^>\n]+>|[^\s\n]*(?:placeholder|screenshot_path)[^\s\n]*)[`"']?''',
+            re.I,
+        )
+        matched_placeholder_media_tag = False
+        for match in placeholder_media_pattern.finditer(content):
+            raw_path = match.group("path").strip()
+            # Avoid duplicate warnings for placeholder paths already consumed by
+            # the normal local-file MEDIA pattern (for example /tmp/foo-<name>.zip).
+            if media_pattern.fullmatch(match.group(0)):
+                continue
+            matched_placeholder_media_tag = True
+            logger.warning(
+                "Skipping MEDIA attachment with invalid path (%s): %s",
+                _invalid_media_path_reason(raw_path) or "placeholder path",
+                raw_path,
+            )
+
+        # Finally catch malformed MEDIA control tags that deliberately do not
+        # match the valid local-file extractor above: empty ``MEDIA:`` and
+        # extensionless local placeholders such as ``MEDIA:/absolute/path``.
+        # They are still control syntax and should not leak into visible text.
+        # Do not strip ordinary prose such as "MEDIA: files".
+        malformed_media_pattern = re.compile(
+            r'''[`"']?MEDIA:[^\S\n]*(?:(?P<path>(?:~/|/)\S+)|(?=[`"']?(?:\n|$)))[`"']?'''
+        )
+        matched_malformed_media_tag = False
+        for match in malformed_media_pattern.finditer(content):
+            if media_pattern.fullmatch(match.group(0)) or placeholder_media_pattern.fullmatch(match.group(0)):
+                continue
+            matched_malformed_media_tag = True
+            raw_path = (match.group("path") or "").strip()
+            logger.warning(
+                "Skipping MEDIA attachment with invalid path (%s): %s",
+                _invalid_media_path_reason(raw_path) or "malformed media tag",
+                raw_path,
+            )
 
         # Remove MEDIA tags from content (including surrounding quote/backtick wrappers)
-        if media:
+        # even when the extracted path was invalid.  Invalid tags are control
+        # syntax, not user-facing text; leaving them visible invites retries with
+        # the same placeholder path.
+        if matched_media_tag or matched_placeholder_media_tag or matched_malformed_media_tag:
             cleaned = media_pattern.sub('', cleaned)
+            cleaned = placeholder_media_pattern.sub('', cleaned)
+            cleaned = malformed_media_pattern.sub('', cleaned)
             cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
         
         return media, cleaned
@@ -3172,7 +3259,6 @@ class BasePlatformAdapter(ABC):
                 # Strip any remaining internal directives from message body (fixes #1561)
                 text_content = text_content.replace("[[audio_as_voice]]", "").strip()
                 text_content = text_content.replace("[[as_document]]", "").strip()
-                text_content = re.sub(r"MEDIA:\s*\S+", "", text_content).strip()
                 if images:
                     logger.info("[%s] extract_images found %d image(s) in response (%d chars)", self.name, len(images), len(response))
 

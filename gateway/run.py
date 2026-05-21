@@ -11491,12 +11491,21 @@ class GatewayRunner:
                     except Exception:
                         pass
 
-                # Send media files
+                # Send media files.  Revalidate immediately before platform
+                # delivery so stale/custom adapter extraction paths cannot pass
+                # missing placeholder files into send_document().
                 for media_path, _is_voice in (media_files or []):
+                    expanded_media_path = os.path.expanduser(str(media_path or "").strip())
+                    if not expanded_media_path or not os.path.isfile(expanded_media_path):
+                        logger.warning(
+                            "Skipping background MEDIA attachment with invalid path (file does not exist): %s",
+                            expanded_media_path,
+                        )
+                        continue
                     try:
                         await adapter.send_document(
                             chat_id=source.chat_id,
-                            file_path=media_path,
+                            file_path=expanded_media_path,
                             metadata=_thread_metadata,
                         )
                     except Exception:

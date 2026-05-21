@@ -639,10 +639,11 @@ class GatewayStreamConsumer:
         except Exception as e:
             logger.error("Stream consumer error: %s", e)
 
-    # Pattern to strip MEDIA:<path> tags (including optional surrounding quotes).
-    # Matches the simple cleanup regex used by the non-streaming path in
-    # gateway/platforms/base.py for post-processing.
-    _MEDIA_RE = re.compile(r'''[`"']?MEDIA:\s*\S+[`"']?''')
+    # Pattern to strip MEDIA:<local-path> tags (including optional surrounding
+    # quotes) plus standalone empty MEDIA: control tags. Do not strip ordinary
+    # prose such as "MEDIA: files" — without a local path or line-ending empty
+    # directive it is visible text, not gateway control syntax.
+    _MEDIA_RE = re.compile(r'''[`"']?MEDIA:[^\S\n]*(?:(?:~/|/)\S+|(?=[`"']?(?:\n|$)))[`"']?''')
 
     @staticmethod
     def _clean_for_display(text: str) -> str:
