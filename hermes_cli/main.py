@@ -129,6 +129,8 @@ if _try_termux_ultrafast_version():
 
 import argparse
 import json
+import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -6585,6 +6587,69 @@ def _build_web_ui(web_dir: Path, *, fatal: bool = False) -> bool:
     return True
 
 
+def _is_dashboard_command(command: str) -> bool:
+    """Return True when a process command line is a Hermes dashboard.
+
+    Global Hermes flags may appear before the subcommand, e.g.
+    ``hermes --profile mister dashboard``.  A simple substring search for
+    ``"hermes dashboard"`` misses that form, while a greedy regex such as
+    ``hermes.*dashboard`` catches unrelated chat/session commands that merely
+    mention the word dashboard.  Tokenize first, locate the Hermes entry point,
+    skip known global options, and require the resolved subcommand to be the
+    actual ``dashboard`` argv token.
+    """
+    if "dashboard" not in command:
+        return False
+    try:
+        tokens = shlex.split(command, posix=sys.platform != "win32")
+    except ValueError:
+        tokens = command.split()
+    if "dashboard" not in tokens:
+        return False
+
+    normalized = [t.replace("\\", "/") for t in tokens]
+    start_index: int | None = None
+    for index, token in enumerate(normalized):
+        name = os.path.basename(token)
+        if name == "hermes":
+            start_index = index + 1
+            break
+        if token == "hermes_cli.main" or token.endswith("/hermes_cli/main.py"):
+            start_index = index + 1
+            break
+        if token == "-m" and index + 1 < len(normalized) and normalized[index + 1] == "hermes_cli.main":
+            start_index = index + 2
+            break
+    if start_index is None:
+        return False
+
+    options_with_values = {
+        "--profile", "-p",
+        "--resume", "-r",
+        "--continue", "-c",
+        "--skills", "-s",
+        "--model", "-m",
+        "--provider",
+        "--source",
+        "--toolsets", "-t",
+    }
+    index = start_index
+    while index < len(normalized):
+        token = normalized[index]
+        if token == "--":
+            index += 1
+            break
+        if not token.startswith("-"):
+            break
+        if "=" in token:
+            index += 1
+        elif token in options_with_values:
+            index += 2
+        else:
+            index += 1
+    return index < len(normalized) and normalized[index] == "dashboard"
+
+
 def _find_stale_dashboard_pids() -> list[int]:
     """Return PIDs of ``hermes dashboard`` processes other than ourselves.
 
@@ -6602,11 +6667,6 @@ def _find_stale_dashboard_pids() -> list[int]:
 
     Returns an empty list on any scan error (missing ps/wmic, timeout, etc.).
     """
-    patterns = [
-        "hermes dashboard",
-        "hermes_cli.main dashboard",
-        "hermes_cli/main.py dashboard",
-    ]
     self_pid = os.getpid()
     dashboard_pids: list[int] = []
 
@@ -6636,10 +6696,7 @@ def _find_stale_dashboard_pids() -> list[int]:
                     current_cmd = line[len("CommandLine=") :]
                 elif line.startswith("ProcessId="):
                     pid_str = line[len("ProcessId=") :]
-                    if (
-                        any(p in current_cmd for p in patterns)
-                        and int(pid_str) != self_pid
-                    ):
+                    if _is_dashboard_command(current_cmd) and int(pid_str) != self_pid:
                         try:
                             dashboard_pids.append(int(pid_str))
                         except ValueError:
@@ -6670,7 +6727,7 @@ def _find_stale_dashboard_pids() -> list[int]:
                     except ValueError:
                         continue
                     command = parts[1]
-                    if any(p in command for p in patterns) and pid != self_pid:
+                    if _is_dashboard_command(command) and pid != self_pid:
                         dashboard_pids.append(pid)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
         return []
