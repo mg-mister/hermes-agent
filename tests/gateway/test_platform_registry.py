@@ -628,6 +628,60 @@ class TestApplyYamlConfigFnDispatch:
         finally:
             reg.unregister("mybadshapeplat")
 
+    def test_registry_auto_enable_respects_plugin_is_connected(
+        self, tmp_path, monkeypatch
+    ):
+        """Installed plugin deps alone must not start an unconfigured platform."""
+        from gateway.platform_registry import platform_registry as _reg
+
+        _reg.register(PlatformEntry(
+            name="mydisabledplat",
+            label="MyDisabled",
+            adapter_factory=lambda cfg: None,
+            check_fn=lambda: True,
+            is_connected=lambda cfg: False,
+            source="plugin",
+        ))
+        try:
+            home = self._write_config(tmp_path, "mydisabledplat:\n  enabled: false\n")
+            monkeypatch.setenv("HERMES_HOME", str(home))
+
+            from gateway.config import load_gateway_config, Platform
+            cfg = load_gateway_config()
+
+            plat = Platform("mydisabledplat")
+            assert plat in cfg.platforms
+            assert cfg.platforms[plat].enabled is False
+        finally:
+            _reg.unregister("mydisabledplat")
+
+    def test_registry_auto_enable_allows_plugin_when_connected(
+        self, tmp_path, monkeypatch
+    ):
+        """Connected plugin platforms are still auto-enabled for env-only setup."""
+        from gateway.platform_registry import platform_registry as _reg
+
+        _reg.register(PlatformEntry(
+            name="myconnectedplat",
+            label="MyConnected",
+            adapter_factory=lambda cfg: None,
+            check_fn=lambda: True,
+            is_connected=lambda cfg: True,
+            source="plugin",
+        ))
+        try:
+            home = self._write_config(tmp_path, "")
+            monkeypatch.setenv("HERMES_HOME", str(home))
+
+            from gateway.config import load_gateway_config, Platform
+            cfg = load_gateway_config()
+
+            plat = Platform("myconnectedplat")
+            assert plat in cfg.platforms
+            assert cfg.platforms[plat].enabled is True
+        finally:
+            _reg.unregister("myconnectedplat")
+
     def test_env_var_takes_precedence_when_hook_uses_getenv_guard(
         self, tmp_path, monkeypatch
     ):

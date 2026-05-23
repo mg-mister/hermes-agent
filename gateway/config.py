@@ -1823,6 +1823,14 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
                 logger.debug("check_fn for %s raised: %s", entry.name, e)
                 continue
             platform = Platform(entry.name)
+            if entry.is_connected is not None:
+                try:
+                    current_cfg = config.platforms.get(platform, PlatformConfig())
+                    if not entry.is_connected(current_cfg):
+                        continue
+                except Exception as e:
+                    logger.debug("is_connected for %s raised: %s", entry.name, e)
+                    continue
             if platform not in config.platforms:
                 config.platforms[platform] = PlatformConfig()
             config.platforms[platform].enabled = True
