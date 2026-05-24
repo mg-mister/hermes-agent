@@ -1,0 +1,2340 @@
+{
+  "applied_count": 0,
+  "apply_enabled": false,
+  "boards": [
+    "mister-mission-control"
+  ],
+  "boards_scanned": 1,
+  "boundary": "Dry-run default. Apply mode is idempotent, bounded, owner-visible only, and never infers links from prose; Kanban is never mutated.",
+  "cards_with_linear_issue": 48,
+  "counts_by_classification": {
+    "ignored": 1,
+    "needs_mister": 5,
+    "proposed": 42
+  },
+  "generated_at": "2026-05-24T21:56:04.024995+00:00",
+  "ignored_count": 1,
+  "items": [
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_b7191549:review:33b0bb4a88ce2755",
+          "line": "- [ ] `mister-mission-control/t_b7191549` — QA re-review: MIS-87 restored auth/preflight remediation — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_b7191549: QA re-review: MIS-87 restored auth/preflight remediation. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_b7191549:review:33b0bb4a88ce2755`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_b7191549:review:33b0bb4a88ce2755",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_b7191549",
+      "task_status": "done",
+      "task_title": "QA re-review: MIS-87 restored auth/preflight remediation",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_29d1640f:review:7403bf873ab3b636",
+          "line": "- [ ] `mister-mission-control/t_29d1640f` — security re-review: MIS-87 restored auth/preflight remediation — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_29d1640f: security re-review: MIS-87 restored auth/preflight remediation. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_29d1640f:review:7403bf873ab3b636`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_29d1640f:review:7403bf873ab3b636",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_29d1640f",
+      "task_status": "done",
+      "task_title": "security re-review: MIS-87 restored auth/preflight remediation",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_bf9bc548:review:790e2d7affacfecd",
+          "line": "- [ ] `mister-mission-control/t_bf9bc548` — remediate: MIS-87 restore auth/preflight diff after fallback QA RC — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_bf9bc548: remediate: MIS-87 restore auth/preflight diff after fallback QA RC. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_bf9bc548:review:790e2d7affacfecd`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_bf9bc548:review:790e2d7affacfecd",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_bf9bc548",
+      "task_status": "done",
+      "task_title": "remediate: MIS-87 restore auth/preflight diff after fallback QA RC",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_15b1f217:review:9fac83339a824bc0",
+          "line": "- [ ] `mister-mission-control/t_15b1f217` — QA: MIS-87 worker auth/preflight fix — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_15b1f217: QA: MIS-87 worker auth/preflight fix. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_15b1f217:review:9fac83339a824bc0`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_15b1f217:review:9fac83339a824bc0",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_15b1f217",
+      "task_status": "done",
+      "task_title": "QA: MIS-87 worker auth/preflight fix",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_f0841a8e:review:7e2b23a613a8a559",
+          "line": "- [ ] `mister-mission-control/t_f0841a8e` — security review: MIS-87 worker auth/preflight fix — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_f0841a8e: security review: MIS-87 worker auth/preflight fix. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_f0841a8e:review:7e2b23a613a8a559`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_f0841a8e:review:7e2b23a613a8a559",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_f0841a8e",
+      "task_status": "done",
+      "task_title": "security review: MIS-87 worker auth/preflight fix",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_eb353dc6:review:82088cc2d4176f1c",
+          "line": "- [ ] `mister-mission-control/t_eb353dc6` — Security review: MIS-87 ACPX guard env inheritance semantics — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_eb353dc6: Security review: MIS-87 ACPX guard env inheritance semantics. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_eb353dc6:review:82088cc2d4176f1c`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_eb353dc6:review:82088cc2d4176f1c",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_eb353dc6",
+      "task_status": "done",
+      "task_title": "Security review: MIS-87 ACPX guard env inheritance semantics",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87/corrigir-authpreflight-dos-perfis-kanban-worker",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_49ec75e2:done:f791a175fc794245",
+          "line": "- [x] `mister-mission-control/t_49ec75e2` — fix: MIS-87 Kanban worker Codex auth/preflight — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_49ec75e2: fix: MIS-87 Kanban worker Codex auth/preflight. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_49ec75e2:done:f791a175fc794245`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_49ec75e2:done:f791a175fc794245",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_49ec75e2:done:f791a175fc794245",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "done",
+      "task_id": "t_49ec75e2",
+      "task_status": "done",
+      "task_title": "fix: MIS-87 Kanban worker Codex auth/preflight",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-83",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-83/inventariar-e-governar-scripts-como-ativos-de-automacao-do-mister",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_ddb620f8:done:7ce07f7b4edcef0b",
+          "line": "- [x] `mister-mission-control/t_ddb620f8` — implement: MIS-83 Script Asset Registry MVP — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_ddb620f8: implement: MIS-83 Script Asset Registry MVP. Status: done. Idempotency: `mckanban-linear-sync:MIS-83:mister-mission-control/t_ddb620f8:done:7ce07f7b4edcef0b`.",
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_ddb620f8:done:7ce07f7b4edcef0b",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_ddb620f8:done:7ce07f7b4edcef0b",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "done",
+      "task_id": "t_ddb620f8",
+      "task_status": "done",
+      "task_title": "implement: MIS-83 Script Asset Registry MVP",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-65",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-65/dependecias-nos-issues-no-linear",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-65:mister-mission-control/t_52672b9a:done:edbea110aad48c04",
+          "line": "- [x] `mister-mission-control/t_52672b9a` — apply: MIS-65 Linear dependency convention canary — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_52672b9a: apply: MIS-65 Linear dependency convention canary. Status: done. Idempotency: `mckanban-linear-sync:MIS-65:mister-mission-control/t_52672b9a:done:edbea110aad48c04`.",
+          "key": "mckanban-linear-sync:MIS-65:mister-mission-control/t_52672b9a:done:edbea110aad48c04",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-65:mister-mission-control/t_52672b9a:done:edbea110aad48c04",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "done",
+      "task_id": "t_52672b9a",
+      "task_status": "done",
+      "task_title": "apply: MIS-65 Linear dependency convention canary",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-67",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-67/memoria-kanban-e-linear",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-67:mister-mission-control/t_6ce1d72a:done:3dfae5097818a336",
+          "line": "- [x] `mister-mission-control/t_6ce1d72a` — audit: MIS-67 Linear/Kanban memory and agent-routing operating model — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_6ce1d72a: audit: MIS-67 Linear/Kanban memory and agent-routing operating model. Status: done. Idempotency: `mckanban-linear-sync:MIS-67:mister-mission-control/t_6ce1d72a:done:3dfae5097818a336`.",
+          "key": "mckanban-linear-sync:MIS-67:mister-mission-control/t_6ce1d72a:done:3dfae5097818a336",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-67:mister-mission-control/t_6ce1d72a:done:3dfae5097818a336",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "done",
+      "task_id": "t_6ce1d72a",
+      "task_status": "done",
+      "task_title": "audit: MIS-67 Linear/Kanban memory and agent-routing operating model",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-42",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-42/mister-os-reduzir-ruido-e-latencia-telegramgateway",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-42:mister-mission-control/t_b3ae5321:review:785bfa8080185f0a",
+          "line": "- [ ] `mister-mission-control/t_b3ae5321` — QA review: MIS-42 gateway docs after remediation — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_b3ae5321: QA review: MIS-42 gateway docs after remediation. Status: done. Idempotency: `mckanban-linear-sync:MIS-42:mister-mission-control/t_b3ae5321:review:785bfa8080185f0a`.",
+          "key": "mckanban-linear-sync:MIS-42:mister-mission-control/t_b3ae5321:review:785bfa8080185f0a",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_b3ae5321",
+      "task_status": "done",
+      "task_title": "QA review: MIS-42 gateway docs after remediation",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-85",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-85/garantir-contexto-completo-por-issue-linear-dossier-sessao",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_0a9234cf:done:874cca961439394c",
+          "line": "- [x] `mister-mission-control/t_0a9234cf` — spec: MIS-85 LinearOps issue dossier/context packet implementation plan — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_0a9234cf: spec: MIS-85 LinearOps issue dossier/context packet implementation plan. Status: done. Idempotency: `mckanban-linear-sync:MIS-85:mister-mission-control/t_0a9234cf:done:874cca961439394c`.",
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_0a9234cf:done:874cca961439394c",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_0a9234cf:done:874cca961439394c",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_0a9234cf",
+      "task_status": "done",
+      "task_title": "spec: MIS-85 LinearOps issue dossier/context packet implementation plan",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-42",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-42/mister-os-reduzir-ruido-e-latencia-telegramgateway",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-42:mister-mission-control/t_79b1c1d6:review:316aa659b4482bf9",
+          "line": "- [ ] `mister-mission-control/t_79b1c1d6` — spike: MIS-42 Telegram latency/progress-edit root cause — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_79b1c1d6: spike: MIS-42 Telegram latency/progress-edit root cause. Status: done. Idempotency: `mckanban-linear-sync:MIS-42:mister-mission-control/t_79b1c1d6:review:316aa659b4482bf9`.",
+          "key": "mckanban-linear-sync:MIS-42:mister-mission-control/t_79b1c1d6:review:316aa659b4482bf9",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_79b1c1d6",
+      "task_status": "done",
+      "task_title": "spike: MIS-42 Telegram latency/progress-edit root cause",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-94",
+      "linear_mutated": false,
+      "linear_url": "[REDACTED]",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-94:mister-mission-control/t_940ba25a:review:2cd6b5897bbf87f4",
+          "line": "- [ ] `mister-mission-control/t_940ba25a` — [REDACTED] — Kanban status: `blocked`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_940ba25a: [REDACTED]. Status: blocked. Idempotency: `mckanban-linear-sync:MIS-94:mister-mission-control/t_940ba25a:review:2cd6b5897bbf87f4`.",
+          "key": "mckanban-linear-sync:MIS-94:mister-mission-control/t_940ba25a:review:2cd6b5897bbf87f4",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_940ba25a",
+      "task_status": "blocked",
+      "task_title": "[REDACTED]",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-83",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-83/inventariar-e-governar-scripts-como-ativos-de-automacao-do-mister",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_5513f52d:done:1efb8da2bb59e09d",
+          "line": "- [x] `mister-mission-control/t_5513f52d` — MIS-83 inventory/governance prep: Mister automation scripts as assets — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_5513f52d: MIS-83 inventory/governance prep: Mister automation scripts as assets. Status: done. Idempotency: `mckanban-linear-sync:MIS-83:mister-mission-control/t_5513f52d:done:1efb8da2bb59e09d`.",
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_5513f52d:done:1efb8da2bb59e09d",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_5513f52d:done:1efb8da2bb59e09d",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_5513f52d",
+      "task_status": "done",
+      "task_title": "MIS-83 inventory/governance prep: Mister automation scripts as assets",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-93",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-93/linearops-terminal-issues-nao-devem-aparecer-acionaveis-no-active",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-93:mister-mission-control/t_283ae1f6:done:e99b3995baab22eb",
+          "line": "- [x] `mister-mission-control/t_283ae1f6` — fix: MIS-93 terminal issues are non-actionable in active-state manager — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_283ae1f6: fix: MIS-93 terminal issues are non-actionable in active-state manager. Status: done. Idempotency: `mckanban-linear-sync:MIS-93:mister-mission-control/t_283ae1f6:done:e99b3995baab22eb`.",
+          "key": "mckanban-linear-sync:MIS-93:mister-mission-control/t_283ae1f6:done:e99b3995baab22eb",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-93:mister-mission-control/t_283ae1f6:done:e99b3995baab22eb",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "done",
+      "task_id": "t_283ae1f6",
+      "task_status": "done",
+      "task_title": "fix: MIS-93 terminal issues are non-actionable in active-state manager",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Blocked / Waiting",
+      "linear_issue": "MIS-68",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-68/issues-parados",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-68:mister-mission-control/t_771b1829:review:b336594a529e4733",
+          "line": "- [ ] `mister-mission-control/t_771b1829` — Linear anti-stall canary: reconcile Mister Review issues — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_771b1829: Linear anti-stall canary: reconcile Mister Review issues. Status: done. Idempotency: `mckanban-linear-sync:MIS-68:mister-mission-control/t_771b1829:review:b336594a529e4733`.",
+          "key": "mckanban-linear-sync:MIS-68:mister-mission-control/t_771b1829:review:b336594a529e4733",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_771b1829",
+      "task_status": "done",
+      "task_title": "Linear anti-stall canary: reconcile Mister Review issues",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS-55",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-55/analisa-os-logs-para-ver-se-existe-problemas-que-se-tenha-de-corrigir",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-55:mister-mission-control/t_777245fc:blocker:2ce14d0a64ddfcfb",
+          "line": "- [ ] `mister-mission-control/t_777245fc` — MIS-55 execute: decompose Hermes log findings into safe remediation slices — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (blocker) for mister-mission-control/t_777245fc: MIS-55 execute: decompose Hermes log findings into safe remediation slices. Status: done. Idempotency: `mckanban-linear-sync:MIS-55:mister-mission-control/t_777245fc:blocker:2ce14d0a64ddfcfb`.",
+          "key": "mckanban-linear-sync:MIS-55:mister-mission-control/t_777245fc:blocker:2ce14d0a64ddfcfb",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-55:mister-mission-control/t_777245fc:blocker:2ce14d0a64ddfcfb",
+          "target_state": "Blocked / Waiting",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "blocker",
+      "task_id": "t_777245fc",
+      "task_status": "done",
+      "task_title": "MIS-55 execute: decompose Hermes log findings into safe remediation slices",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-83",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-83/inventariar-e-governar-scripts-como-ativos-de-automacao-do-mister",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_c473001a:done:c7cd8414736d37c6",
+          "line": "- [x] `mister-mission-control/t_c473001a` — curate: MIS-83 script registry metadata first pass — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_c473001a: curate: MIS-83 script registry metadata first pass. Status: done. Idempotency: `mckanban-linear-sync:MIS-83:mister-mission-control/t_c473001a:done:c7cd8414736d37c6`.",
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_c473001a:done:c7cd8414736d37c6",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-83:mister-mission-control/t_c473001a:done:c7cd8414736d37c6",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_c473001a",
+      "task_status": "done",
+      "task_title": "curate: MIS-83 script registry metadata first pass",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Ready",
+      "linear_issue": "MIS-78",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-78/mapear-automacoes-que-devem-criaratualizar-linear-issues-em-vez-de-so",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-78:mister-mission-control/t_e26f6f38:review:b7bec96a28c42cab",
+          "line": "- [ ] `mister-mission-control/t_e26f6f38` — MIS-78 execute: map automation outputs to Linear policy — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_e26f6f38: MIS-78 execute: map automation outputs to Linear policy. Status: done. Idempotency: `mckanban-linear-sync:MIS-78:mister-mission-control/t_e26f6f38:review:b7bec96a28c42cab`.",
+          "key": "mckanban-linear-sync:MIS-78:mister-mission-control/t_e26f6f38:review:b7bec96a28c42cab",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_e26f6f38",
+      "task_status": "done",
+      "task_title": "MIS-78 execute: map automation outputs to Linear policy",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS3-4",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS3-4",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS3-4:mister-mission-control/t_ccd68d3f:review:f6ed5307b99e3037",
+          "line": "- [ ] `mister-mission-control/t_ccd68d3f` — MIS3-4 execute: curate first Wiki Bom Dia content packet — Kanban status: `blocked`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_ccd68d3f: MIS3-4 execute: curate first Wiki Bom Dia content packet. Status: blocked. Idempotency: `mckanban-linear-sync:MIS3-4:mister-mission-control/t_ccd68d3f:review:f6ed5307b99e3037`.",
+          "key": "mckanban-linear-sync:MIS3-4:mister-mission-control/t_ccd68d3f:review:f6ed5307b99e3037",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_ccd68d3f",
+      "task_status": "blocked",
+      "task_title": "MIS3-4 execute: curate first Wiki Bom Dia content packet",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS3-3",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS3-3",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS3-3:mister-mission-control/t_65d7525d:review:b9d586847036af55",
+          "line": "- [ ] `mister-mission-control/t_65d7525d` — MIS3-3 execute: propose content-review workflow for MIS3 — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_65d7525d: MIS3-3 execute: propose content-review workflow for MIS3. Status: done. Idempotency: `mckanban-linear-sync:MIS3-3:mister-mission-control/t_65d7525d:review:b9d586847036af55`.",
+          "key": "mckanban-linear-sync:MIS3-3:mister-mission-control/t_65d7525d:review:b9d586847036af55",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_65d7525d",
+      "task_status": "done",
+      "task_title": "MIS3-3 execute: propose content-review workflow for MIS3",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-82",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-82/normalizar-issues-linear-com-base-nos-exemplos-reais-ja-criados",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-82:mister-mission-control/t_cda2f885:review:ee44138625527833",
+          "line": "- [ ] `mister-mission-control/t_cda2f885` — MIS-82 execute: normalize highest-friction Linear issues using real examples — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_cda2f885: MIS-82 execute: normalize highest-friction Linear issues using real examples. Status: done. Idempotency: `mckanban-linear-sync:MIS-82:mister-mission-control/t_cda2f885:review:ee44138625527833`.",
+          "key": "mckanban-linear-sync:MIS-82:mister-mission-control/t_cda2f885:review:ee44138625527833",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_cda2f885",
+      "task_status": "done",
+      "task_title": "MIS-82 execute: normalize highest-friction Linear issues using real examples",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS-66",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-66/skills-dos-perfis",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-66:mister-mission-control/t_b4723dd0:review:634ccc7826e76239",
+          "line": "- [ ] `mister-mission-control/t_b4723dd0` — MIS-66 execute: audit active profile skills and preload coverage — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_b4723dd0: MIS-66 execute: audit active profile skills and preload coverage. Status: done. Idempotency: `mckanban-linear-sync:MIS-66:mister-mission-control/t_b4723dd0:review:634ccc7826e76239`.",
+          "key": "mckanban-linear-sync:MIS-66:mister-mission-control/t_b4723dd0:review:634ccc7826e76239",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_b4723dd0",
+      "task_status": "done",
+      "task_title": "MIS-66 execute: audit active profile skills and preload coverage",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS-53",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-53/session-db-esta-grande",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-53:mister-mission-control/t_ac07fb4a:review:37e94be966d18604",
+          "line": "- [ ] `mister-mission-control/t_ac07fb4a` — MIS-53 execute: research Hermes session memory retention and docs path — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_ac07fb4a: MIS-53 execute: research Hermes session memory retention and docs path. Status: done. Idempotency: `mckanban-linear-sync:MIS-53:mister-mission-control/t_ac07fb4a:review:37e94be966d18604`.",
+          "key": "mckanban-linear-sync:MIS-53:mister-mission-control/t_ac07fb4a:review:37e94be966d18604",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_ac07fb4a",
+      "task_status": "done",
+      "task_title": "MIS-53 execute: research Hermes session memory retention and docs path",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Ready",
+      "linear_issue": "MIS-2",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-2/mister-ops-triage-semanal-de-capturas-telegramvoicewiki",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-2:mister-mission-control/t_e0fe2e96:review:6c7dd59a9e4c8936",
+          "line": "- [ ] `mister-mission-control/t_e0fe2e96` — MIS-2 execute: run weekly capture triage canary — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_e0fe2e96: MIS-2 execute: run weekly capture triage canary. Status: done. Idempotency: `mckanban-linear-sync:MIS-2:mister-mission-control/t_e0fe2e96:review:6c7dd59a9e4c8936`.",
+          "key": "mckanban-linear-sync:MIS-2:mister-mission-control/t_e0fe2e96:review:6c7dd59a9e4c8936",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_e0fe2e96",
+      "task_status": "done",
+      "task_title": "MIS-2 execute: run weekly capture triage canary",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Blocked / Waiting",
+      "linear_issue": "MIS-68",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-68/issues-parados",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-68:mister-mission-control/t_614e0374:done:fb4add52a0eb15ef",
+          "line": "- [x] `mister-mission-control/t_614e0374` — groom: open Linear issues after all-issues audit — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_614e0374: groom: open Linear issues after all-issues audit. Status: done. Idempotency: `mckanban-linear-sync:MIS-68:mister-mission-control/t_614e0374:done:fb4add52a0eb15ef`.",
+          "key": "mckanban-linear-sync:MIS-68:mister-mission-control/t_614e0374:done:fb4add52a0eb15ef",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-68:mister-mission-control/t_614e0374:done:fb4add52a0eb15ef",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_614e0374",
+      "task_status": "done",
+      "task_title": "groom: open Linear issues after all-issues audit",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-84",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-84/institucionalizar-prompt-de-reflexao-estrategica-nos-perfis-e-no-radar",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-84:mister-mission-control/t_28f3b7f3:done:3f9f149fe4b2d997",
+          "line": "- [x] `mister-mission-control/t_28f3b7f3` — validate: MIS-84 strategic checkpoint automatic acceptance — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_28f3b7f3: validate: MIS-84 strategic checkpoint automatic acceptance. Status: done. Idempotency: `mckanban-linear-sync:MIS-84:mister-mission-control/t_28f3b7f3:done:3f9f149fe4b2d997`.",
+          "key": "mckanban-linear-sync:MIS-84:mister-mission-control/t_28f3b7f3:done:3f9f149fe4b2d997",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-84:mister-mission-control/t_28f3b7f3:done:3f9f149fe4b2d997",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_28f3b7f3",
+      "task_status": "done",
+      "task_title": "validate: MIS-84 strategic checkpoint automatic acceptance",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-76",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-76/auditar-workflows-mister-e-otimizar-uso-do-linear-como-hub",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-76:mister-mission-control/t_54dc1268:done:11195fe5a135c088",
+          "line": "- [x] `mister-mission-control/t_54dc1268` — audit: MIS-76 workflow source-of-truth rules — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_54dc1268: audit: MIS-76 workflow source-of-truth rules. Status: done. Idempotency: `mckanban-linear-sync:MIS-76:mister-mission-control/t_54dc1268:done:11195fe5a135c088`.",
+          "key": "mckanban-linear-sync:MIS-76:mister-mission-control/t_54dc1268:done:11195fe5a135c088",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-76:mister-mission-control/t_54dc1268:done:11195fe5a135c088",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_54dc1268",
+      "task_status": "done",
+      "task_title": "audit: MIS-76 workflow source-of-truth rules",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-57",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-57/issues-linear-do-voice-notes",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-57:mister-mission-control/t_6252d509:review:91c8a4b8b93d8fb9",
+          "line": "- [ ] `mister-mission-control/t_6252d509` — spec: MIS-57 voice notes review-first pilot — Kanban status: `blocked`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_6252d509: spec: MIS-57 voice notes review-first pilot. Status: blocked. Idempotency: `mckanban-linear-sync:MIS-57:mister-mission-control/t_6252d509:review:91c8a4b8b93d8fb9`.",
+          "key": "mckanban-linear-sync:MIS-57:mister-mission-control/t_6252d509:review:91c8a4b8b93d8fb9",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_6252d509",
+      "task_status": "blocked",
+      "task_title": "spec: MIS-57 voice notes review-first pilot",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-70",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-70/hermes-plugins-estado-e-proximos-passos",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-70:mister-mission-control/t_749433e0:done:db321f0509ba2f9f",
+          "line": "- [x] `mister-mission-control/t_749433e0` — prep: MIS-70 Hermes Plugins state and next executable slice — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_749433e0: prep: MIS-70 Hermes Plugins state and next executable slice. Status: done. Idempotency: `mckanban-linear-sync:MIS-70:mister-mission-control/t_749433e0:done:db321f0509ba2f9f`.",
+          "key": "mckanban-linear-sync:MIS-70:mister-mission-control/t_749433e0:done:db321f0509ba2f9f",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-70:mister-mission-control/t_749433e0:done:db321f0509ba2f9f",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_749433e0",
+      "task_status": "done",
+      "task_title": "prep: MIS-70 Hermes Plugins state and next executable slice",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-62",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-62/mudar-nome-do-orquestrator-do-departamento-de-programacao",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-62:mister-mission-control/t_312f9eb2:review:908d3a537560422f",
+          "line": "- [ ] `mister-mission-control/t_312f9eb2` — prep: MIS-62 Brain Development rename plan — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_312f9eb2: prep: MIS-62 Brain Development rename plan. Status: done. Idempotency: `mckanban-linear-sync:MIS-62:mister-mission-control/t_312f9eb2:review:908d3a537560422f`.",
+          "key": "mckanban-linear-sync:MIS-62:mister-mission-control/t_312f9eb2:review:908d3a537560422f",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_312f9eb2",
+      "task_status": "done",
+      "task_title": "prep: MIS-62 Brain Development rename plan",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-54",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-54/mission-contro-reusavel",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-54:mister-mission-control/t_540f4f22:review:e89a34c0dfe41aa3",
+          "line": "- [ ] `mister-mission-control/t_540f4f22` — spec: MIS-54 reusable Mission Control core and overlay — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_540f4f22: spec: MIS-54 reusable Mission Control core and overlay. Status: done. Idempotency: `mckanban-linear-sync:MIS-54:mister-mission-control/t_540f4f22:review:e89a34c0dfe41aa3`.",
+          "key": "mckanban-linear-sync:MIS-54:mister-mission-control/t_540f4f22:review:e89a34c0dfe41aa3",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_540f4f22",
+      "task_status": "done",
+      "task_title": "spec: MIS-54 reusable Mission Control core and overlay",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "ignored",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-76",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-76/auditar-workflows-mister-e-otimizar-uso-do-linear-como-hub",
+      "origin": "linear",
+      "owner_visible": false,
+      "proposed_changes": [],
+      "rollup_required": "none",
+      "task_id": "t_ffa14fad",
+      "task_status": "done",
+      "task_title": "follow-up: codify MIS-76 source-of-truth routing checklist",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-62",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-62/mudar-nome-do-orquestrator-do-departamento-de-programacao",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-62:mister-mission-control/t_0f6370d0:review:e40d5724f6e7bd7b",
+          "line": "- [ ] `mister-mission-control/t_0f6370d0` — implement: MIS-62 Brain Development owner-facing rename — Kanban status: `blocked`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_0f6370d0: implement: MIS-62 Brain Development owner-facing rename. Status: blocked. Idempotency: `mckanban-linear-sync:MIS-62:mister-mission-control/t_0f6370d0:review:e40d5724f6e7bd7b`.",
+          "key": "mckanban-linear-sync:MIS-62:mister-mission-control/t_0f6370d0:review:e40d5724f6e7bd7b",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_0f6370d0",
+      "task_status": "blocked",
+      "task_title": "implement: MIS-62 Brain Development owner-facing rename",
+      "warnings": []
+    },
+    {
+      "blockers": [
+        "invalid_or_missing_owner_visible",
+        "invalid_or_missing_rollup_required"
+      ],
+      "board": "mister-mission-control",
+      "classification": "needs_mister",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-57",
+      "linear_mutated": false,
+      "linear_url": "",
+      "origin": "kanban",
+      "owner_visible": null,
+      "proposed_changes": [],
+      "rollup_required": "",
+      "task_id": "t_988df29d",
+      "task_status": "running",
+      "task_title": "execute pilot: MIS-57 voice-notes review-first 3-5 note batch",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-88",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-88/corrigir-roteamento-kanban-de-review-required-para-nao-bloquear",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-88:mister-mission-control/t_c35a1522:review:5813d9fb809516c8",
+          "line": "- [ ] `mister-mission-control/t_c35a1522` — fix: MIS-88 review-required gate routing — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_c35a1522: fix: MIS-88 review-required gate routing. Status: done. Idempotency: `mckanban-linear-sync:MIS-88:mister-mission-control/t_c35a1522:review:5813d9fb809516c8`.",
+          "key": "mckanban-linear-sync:MIS-88:mister-mission-control/t_c35a1522:review:5813d9fb809516c8",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_c35a1522",
+      "task_status": "done",
+      "task_title": "fix: MIS-88 review-required gate routing",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-87",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_f8e1094b:blocker:dd9d8c6c2e72629b",
+          "line": "- [ ] `mister-mission-control/t_f8e1094b` — remediate: MIS-87 ACPX guard env inheritance review blocker — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (blocker) for mister-mission-control/t_f8e1094b: remediate: MIS-87 ACPX guard env inheritance review blocker. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_f8e1094b:blocker:dd9d8c6c2e72629b`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_f8e1094b:blocker:dd9d8c6c2e72629b",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_f8e1094b:blocker:dd9d8c6c2e72629b",
+          "target_state": "Blocked / Waiting",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "blocker",
+      "task_id": "t_f8e1094b",
+      "task_status": "done",
+      "task_title": "remediate: MIS-87 ACPX guard env inheritance review blocker",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-87",
+      "linear_mutated": false,
+      "linear_url": "",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_114481af:blocker:37f9d7d7e162d302",
+          "line": "- [ ] `mister-mission-control/t_114481af` — security review: MIS-87 ACPX guard env inheritance remediation — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (blocker) for mister-mission-control/t_114481af: security review: MIS-87 ACPX guard env inheritance remediation. Status: done. Idempotency: `mckanban-linear-sync:MIS-87:mister-mission-control/t_114481af:blocker:37f9d7d7e162d302`.",
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_114481af:blocker:37f9d7d7e162d302",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-87:mister-mission-control/t_114481af:blocker:37f9d7d7e162d302",
+          "target_state": "Blocked / Waiting",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "blocker",
+      "task_id": "t_114481af",
+      "task_status": "done",
+      "task_title": "security review: MIS-87 ACPX guard env inheritance remediation",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Ready",
+      "linear_issue": "MIS-90",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-90/linearkanban-canary-increase-structured-work-pack-metadata-coverage",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-90:mister-mission-control/t_e08ca141:milestone:da6779251bdd3dc3",
+          "line": "- [ ] `mister-mission-control/t_e08ca141` — canary: increase Linear/Kanban structured metadata coverage — Kanban status: `running`",
+          "type": "description_rollup_line"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-90:mister-mission-control/t_e08ca141:milestone:da6779251bdd3dc3",
+          "target_state": "In Progress",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_e08ca141",
+      "task_status": "running",
+      "task_title": "canary: increase Linear/Kanban structured metadata coverage",
+      "warnings": []
+    },
+    {
+      "blockers": [
+        "invalid_or_missing_owner_visible",
+        "invalid_or_missing_rollup_required"
+      ],
+      "board": "mister-mission-control",
+      "classification": "needs_mister",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-94",
+      "linear_mutated": false,
+      "linear_url": "",
+      "origin": "",
+      "owner_visible": null,
+      "proposed_changes": [],
+      "rollup_required": "",
+      "task_id": "t_afd964fa",
+      "task_status": "done",
+      "task_title": "[REDACTED]",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-62",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-62/mudar-nome-do-orquestrator-do-departamento-de-programacao",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-62:mister-mission-control/t_bd75aba5:review:9e571674750ebd2c",
+          "line": "- [ ] `mister-mission-control/t_bd75aba5` — QA review: MIS-62 Brain Development owner-facing rename — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_bd75aba5: QA review: MIS-62 Brain Development owner-facing rename. Status: done. Idempotency: `mckanban-linear-sync:MIS-62:mister-mission-control/t_bd75aba5:review:9e571674750ebd2c`.",
+          "key": "mckanban-linear-sync:MIS-62:mister-mission-control/t_bd75aba5:review:9e571674750ebd2c",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_bd75aba5",
+      "task_status": "done",
+      "task_title": "QA review: MIS-62 Brain Development owner-facing rename",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-85",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-85/garantir-contexto-completo-por-issue-linear-dossier-sessao",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_283046fc:review:36bc17ade271b978",
+          "line": "- [ ] `mister-mission-control/t_283046fc` — security re-review: MIS-85 recursive context-packet redaction remediation — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_283046fc: security re-review: MIS-85 recursive context-packet redaction remediation. Status: done. Idempotency: `mckanban-linear-sync:MIS-85:mister-mission-control/t_283046fc:review:36bc17ade271b978`.",
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_283046fc:review:36bc17ade271b978",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_283046fc",
+      "task_status": "done",
+      "task_title": "security re-review: MIS-85 recursive context-packet redaction remediation",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "Done",
+      "linear_issue": "MIS-85",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-85/garantir-contexto-completo-por-issue-linear-dossier-sessao",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_5b74bb11:review:c1dd1a5d9687af06",
+          "line": "- [ ] `mister-mission-control/t_5b74bb11` — QA re-review: MIS-85 recursive context-packet redaction remediation — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (review) for mister-mission-control/t_5b74bb11: QA re-review: MIS-85 recursive context-packet redaction remediation. Status: done. Idempotency: `mckanban-linear-sync:MIS-85:mister-mission-control/t_5b74bb11:review:c1dd1a5d9687af06`.",
+          "key": "mckanban-linear-sync:MIS-85:mister-mission-control/t_5b74bb11:review:c1dd1a5d9687af06",
+          "type": "linear_comment"
+        }
+      ],
+      "rollup_required": "review",
+      "task_id": "t_5b74bb11",
+      "task_status": "done",
+      "task_title": "QA re-review: MIS-85 recursive context-packet redaction remediation",
+      "warnings": []
+    },
+    {
+      "blockers": [
+        "invalid_or_missing_owner_visible",
+        "invalid_or_missing_rollup_required"
+      ],
+      "board": "mister-mission-control",
+      "classification": "needs_mister",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS-55",
+      "linear_mutated": false,
+      "linear_url": "",
+      "origin": "",
+      "owner_visible": null,
+      "proposed_changes": [],
+      "rollup_required": "",
+      "task_id": "t_1cdf23aa",
+      "task_status": "done",
+      "task_title": "security/code review: MIS-55 gateway/search preflight diagnostics",
+      "warnings": []
+    },
+    {
+      "blockers": [
+        "invalid_or_missing_owner_visible",
+        "invalid_or_missing_rollup_required"
+      ],
+      "board": "mister-mission-control",
+      "classification": "needs_mister",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS3-4",
+      "linear_mutated": false,
+      "linear_url": "",
+      "origin": "",
+      "owner_visible": null,
+      "proposed_changes": [],
+      "rollup_required": "",
+      "task_id": "t_5812a291",
+      "task_status": "done",
+      "task_title": "authorized wiki review: MIS3-4 Wiki Bom Dia first content packet",
+      "warnings": []
+    },
+    {
+      "blockers": [
+        "invalid_or_missing_owner_visible",
+        "invalid_or_missing_rollup_required"
+      ],
+      "board": "mister-mission-control",
+      "classification": "needs_mister",
+      "kanban_mutated": false,
+      "linear_current_state": "Mário Review",
+      "linear_issue": "MIS-66",
+      "linear_mutated": false,
+      "linear_url": "",
+      "origin": "",
+      "owner_visible": null,
+      "proposed_changes": [],
+      "rollup_required": "",
+      "task_id": "t_f089ec8c",
+      "task_status": "done",
+      "task_title": "read-only capability matrix: MIS-66 profile skill-diet safe option B",
+      "warnings": []
+    },
+    {
+      "blockers": [],
+      "board": "mister-mission-control",
+      "classification": "proposed",
+      "kanban_mutated": false,
+      "linear_current_state": "A preparar",
+      "linear_issue": "MIS-57",
+      "linear_mutated": false,
+      "linear_url": "https://linear.app/mgwork/issue/MIS-57/issues-linear-do-voice-notes",
+      "origin": "linear",
+      "owner_visible": true,
+      "proposed_changes": [
+        {
+          "key": "mckanban-linear-sync:MIS-57:mister-mission-control/t_c9ba7d89:done:b7215d639fed71a9",
+          "line": "- [x] `mister-mission-control/t_c9ba7d89` — prepare execution inputs: MIS-57 voice-notes review-first pilot — Kanban status: `done`",
+          "type": "description_rollup_line"
+        },
+        {
+          "body": "Kanban factual rollup (done) for mister-mission-control/t_c9ba7d89: prepare execution inputs: MIS-57 voice-notes review-first pilot. Status: done. Idempotency: `mckanban-linear-sync:MIS-57:mister-mission-control/t_c9ba7d89:done:b7215d639fed71a9`.",
+          "key": "mckanban-linear-sync:MIS-57:mister-mission-control/t_c9ba7d89:done:b7215d639fed71a9",
+          "type": "linear_comment"
+        },
+        {
+          "apply_enabled": false,
+          "key": "mckanban-linear-sync:MIS-57:mister-mission-control/t_c9ba7d89:done:b7215d639fed71a9",
+          "target_state": "Review/Done gate",
+          "type": "status_hint"
+        }
+      ],
+      "rollup_required": "milestone",
+      "task_id": "t_c9ba7d89",
+      "task_status": "done",
+      "task_title": "prepare execution inputs: MIS-57 voice-notes review-first pilot",
+      "warnings": []
+    }
+  ],
+  "kanban_mutated": false,
+  "linear_issues_fetched": 25,
+  "linear_mutated": false,
+  "mode": "dry-run",
+  "needs_mister_count": 5,
+  "output_filter": {
+    "issues": [],
+    "only_classification": [],
+    "summary_only": false
+  },
+  "plan_summary": {
+    "boards_by_issue": {
+      "MIS-2": [
+        "mister-mission-control"
+      ],
+      "MIS-42": [
+        "mister-mission-control"
+      ],
+      "MIS-53": [
+        "mister-mission-control"
+      ],
+      "MIS-54": [
+        "mister-mission-control"
+      ],
+      "MIS-55": [
+        "mister-mission-control"
+      ],
+      "MIS-57": [
+        "mister-mission-control"
+      ],
+      "MIS-62": [
+        "mister-mission-control"
+      ],
+      "MIS-65": [
+        "mister-mission-control"
+      ],
+      "MIS-66": [
+        "mister-mission-control"
+      ],
+      "MIS-67": [
+        "mister-mission-control"
+      ],
+      "MIS-68": [
+        "mister-mission-control"
+      ],
+      "MIS-70": [
+        "mister-mission-control"
+      ],
+      "MIS-76": [
+        "mister-mission-control"
+      ],
+      "MIS-78": [
+        "mister-mission-control"
+      ],
+      "MIS-82": [
+        "mister-mission-control"
+      ],
+      "MIS-83": [
+        "mister-mission-control"
+      ],
+      "MIS-84": [
+        "mister-mission-control"
+      ],
+      "MIS-85": [
+        "mister-mission-control"
+      ],
+      "MIS-87": [
+        "mister-mission-control"
+      ],
+      "MIS-88": [
+        "mister-mission-control"
+      ],
+      "MIS-90": [
+        "mister-mission-control"
+      ],
+      "MIS-93": [
+        "mister-mission-control"
+      ],
+      "MIS-94": [
+        "mister-mission-control"
+      ],
+      "MIS3-3": [
+        "mister-mission-control"
+      ],
+      "MIS3-4": [
+        "mister-mission-control"
+      ]
+    },
+    "ignored_by_issue": {
+      "MIS-2": 0,
+      "MIS-42": 0,
+      "MIS-53": 0,
+      "MIS-54": 0,
+      "MIS-55": 0,
+      "MIS-57": 0,
+      "MIS-62": 0,
+      "MIS-65": 0,
+      "MIS-66": 0,
+      "MIS-67": 0,
+      "MIS-68": 0,
+      "MIS-70": 0,
+      "MIS-76": 1,
+      "MIS-78": 0,
+      "MIS-82": 0,
+      "MIS-83": 0,
+      "MIS-84": 0,
+      "MIS-85": 0,
+      "MIS-87": 0,
+      "MIS-88": 0,
+      "MIS-90": 0,
+      "MIS-93": 0,
+      "MIS-94": 0,
+      "MIS3-3": 0,
+      "MIS3-4": 0
+    },
+    "issues_needing_mister": 5,
+    "issues_total": 25,
+    "issues_with_proposals": 25,
+    "items_by_issue": {
+      "MIS-2": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_e0fe2e96",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-42": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_b3ae5321",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_79b1c1d6",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-53": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_ac07fb4a",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-54": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_540f4f22",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-55": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_777245fc",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [
+            "invalid_or_missing_owner_visible",
+            "invalid_or_missing_rollup_required"
+          ],
+          "board": "mister-mission-control",
+          "classification": "needs_mister",
+          "proposal_types": [],
+          "task_id": "t_1cdf23aa",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-57": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_6252d509",
+          "task_status": "blocked",
+          "warnings": []
+        },
+        {
+          "blockers": [
+            "invalid_or_missing_owner_visible",
+            "invalid_or_missing_rollup_required"
+          ],
+          "board": "mister-mission-control",
+          "classification": "needs_mister",
+          "proposal_types": [],
+          "task_id": "t_988df29d",
+          "task_status": "running",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_c9ba7d89",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-62": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_312f9eb2",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_0f6370d0",
+          "task_status": "blocked",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_bd75aba5",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-65": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_52672b9a",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-66": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_b4723dd0",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [
+            "invalid_or_missing_owner_visible",
+            "invalid_or_missing_rollup_required"
+          ],
+          "board": "mister-mission-control",
+          "classification": "needs_mister",
+          "proposal_types": [],
+          "task_id": "t_f089ec8c",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-67": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_6ce1d72a",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-68": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_771b1829",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_614e0374",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-70": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_749433e0",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-76": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_54dc1268",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "ignored",
+          "proposal_types": [],
+          "task_id": "t_ffa14fad",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-78": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_e26f6f38",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-82": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_cda2f885",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-83": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_ddb620f8",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_5513f52d",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_c473001a",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-84": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_28f3b7f3",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-85": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_0a9234cf",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_283046fc",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_5b74bb11",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-87": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_b7191549",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_29d1640f",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_bf9bc548",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_15b1f217",
+          "task_status": "done",
+          "warnings": []
+        },
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_f0841a8e",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-88": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_c35a1522",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-90": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "status_hint"
+          ],
+          "task_id": "t_e08ca141",
+          "task_status": "running",
+          "warnings": []
+        }
+      ],
+      "MIS-93": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment",
+            "status_hint"
+          ],
+          "task_id": "t_283ae1f6",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS-94": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_940ba25a",
+          "task_status": "blocked",
+          "warnings": []
+        },
+        {
+          "blockers": [
+            "invalid_or_missing_owner_visible",
+            "invalid_or_missing_rollup_required"
+          ],
+          "board": "mister-mission-control",
+          "classification": "needs_mister",
+          "proposal_types": [],
+          "task_id": "t_afd964fa",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS3-3": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_65d7525d",
+          "task_status": "done",
+          "warnings": []
+        }
+      ],
+      "MIS3-4": [
+        {
+          "blockers": [],
+          "board": "mister-mission-control",
+          "classification": "proposed",
+          "proposal_types": [
+            "description_rollup_line",
+            "linear_comment"
+          ],
+          "task_id": "t_ccd68d3f",
+          "task_status": "blocked",
+          "warnings": []
+        },
+        {
+          "blockers": [
+            "invalid_or_missing_owner_visible",
+            "invalid_or_missing_rollup_required"
+          ],
+          "board": "mister-mission-control",
+          "classification": "needs_mister",
+          "proposal_types": [],
+          "task_id": "t_5812a291",
+          "task_status": "done",
+          "warnings": []
+        }
+      ]
+    },
+    "max_items_per_issue": 5,
+    "needs_mister_by_issue": {
+      "MIS-2": 0,
+      "MIS-42": 0,
+      "MIS-53": 0,
+      "MIS-54": 0,
+      "MIS-55": 1,
+      "MIS-57": 1,
+      "MIS-62": 0,
+      "MIS-65": 0,
+      "MIS-66": 1,
+      "MIS-67": 0,
+      "MIS-68": 0,
+      "MIS-70": 0,
+      "MIS-76": 0,
+      "MIS-78": 0,
+      "MIS-82": 0,
+      "MIS-83": 0,
+      "MIS-84": 0,
+      "MIS-85": 0,
+      "MIS-87": 0,
+      "MIS-88": 0,
+      "MIS-90": 0,
+      "MIS-93": 0,
+      "MIS-94": 1,
+      "MIS3-3": 0,
+      "MIS3-4": 1
+    },
+    "proposal_types_by_issue": {
+      "MIS-2": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-42": {
+        "description_rollup_line": 2,
+        "linear_comment": 2
+      },
+      "MIS-53": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-54": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-55": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-57": {
+        "description_rollup_line": 2,
+        "linear_comment": 2,
+        "status_hint": 1
+      },
+      "MIS-62": {
+        "description_rollup_line": 3,
+        "linear_comment": 3
+      },
+      "MIS-65": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-66": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-67": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-68": {
+        "description_rollup_line": 2,
+        "linear_comment": 2,
+        "status_hint": 1
+      },
+      "MIS-70": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-76": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-78": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-82": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-83": {
+        "description_rollup_line": 3,
+        "linear_comment": 3,
+        "status_hint": 3
+      },
+      "MIS-84": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-85": {
+        "description_rollup_line": 3,
+        "linear_comment": 3,
+        "status_hint": 1
+      },
+      "MIS-87": {
+        "description_rollup_line": 9,
+        "linear_comment": 9,
+        "status_hint": 3
+      },
+      "MIS-88": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS-90": {
+        "description_rollup_line": 1,
+        "status_hint": 1
+      },
+      "MIS-93": {
+        "description_rollup_line": 1,
+        "linear_comment": 1,
+        "status_hint": 1
+      },
+      "MIS-94": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS3-3": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      },
+      "MIS3-4": {
+        "description_rollup_line": 1,
+        "linear_comment": 1
+      }
+    },
+    "proposals_by_issue": {
+      "MIS-2": 1,
+      "MIS-42": 2,
+      "MIS-53": 1,
+      "MIS-54": 1,
+      "MIS-55": 1,
+      "MIS-57": 2,
+      "MIS-62": 3,
+      "MIS-65": 1,
+      "MIS-66": 1,
+      "MIS-67": 1,
+      "MIS-68": 2,
+      "MIS-70": 1,
+      "MIS-76": 1,
+      "MIS-78": 1,
+      "MIS-82": 1,
+      "MIS-83": 3,
+      "MIS-84": 1,
+      "MIS-85": 3,
+      "MIS-87": 9,
+      "MIS-88": 1,
+      "MIS-90": 1,
+      "MIS-93": 1,
+      "MIS-94": 1,
+      "MIS3-3": 1,
+      "MIS3-4": 1
+    }
+  },
+  "proposed_count": 42,
+  "schema_version": 1,
+  "script_version": "mckanban-linear-sync-v1",
+  "status": "ok",
+  "tasks_scanned": 294
+}

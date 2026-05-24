@@ -658,7 +658,6 @@ class Task:
     # set the env var. Lets clients render a per-session board without
     # relying on tenant + time-window heuristics.
     session_id: Optional[str] = None
-
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Task":
         keys = set(row.keys())
@@ -2226,8 +2225,154 @@ def _has_sticky_block(conn: sqlite3.Connection, task_id: str) -> bool:
     return bool(row) and row["kind"] == "blocked"
 
 
+def _latest_sticky_block_reason(
+    conn: sqlite3.Connection,
+    task_id: str,
+) -> Optional[str]:
+    """Return the latest explicit block reason, or ``None``.
+
+    Uses the same ``blocked`` / ``unblocked`` event pair as
+    :func:`_has_sticky_block`: only an explicit worker/operator block whose
+    latest transition is still ``blocked`` counts. Circuit-breaker blocks do
+    not emit a ``blocked`` event and therefore never masquerade as handoffs.
+    """
+    row = conn.execute(
+        "SELECT kind, payload FROM task_events "
+        "WHERE task_id = ? AND kind IN ('blocked', 'unblocked') "
+        "ORDER BY id DESC LIMIT 1",
+        (task_id,),
+    ).fetchone()
+    if not row or row["kind"] != "blocked":
+        return None
+    try:
+        payload = json.loads(row["payload"] or "{}")
+    except Exception:
+        payload = {}
+    reason = payload.get("reason") if isinstance(payload, dict) else None
+    return str(reason).strip() if reason else None
+
+
+_REVIEW_GATE_ASSIGNEES = frozenset({
+    "mcqa", "mcsecurity", "mcdocs", "mckdoc", "reviewer", "qa", "security",
+})
+_REVIEW_GATE_TITLE_PREFIXES = (
+    "qa:", "qa-review", "review:", "review ",
+    "security:", "security-review", "doc:", "docs:", "doc review",
+)
+_REMEDIATION_ASSIGNEES = frozenset({"mcbackend", "mcui"})
+_REMEDIATION_TITLE_MARKERS = (
+    "remediate", "remediation", "fix:", "fix ", "implement:", "implement ",
+)
+
+
+def _child_title_assignee(conn: sqlite3.Connection, child_id: str) -> tuple[str, str]:
+    row = conn.execute(
+        "SELECT title, assignee FROM tasks WHERE id = ?",
+        (child_id,),
+    ).fetchone()
+    if not row:
+        return "", ""
+    return (row["title"] or "").strip().casefold(), (row["assignee"] or "").strip().casefold()
+
+
+def _looks_like_review_gate_child(
+    conn: sqlite3.Connection,
+    child_id: str,
+) -> bool:
+    """Heuristic for QA/security/doc-review children of a producer handoff.
+
+    Deliberately conservative: a ``review-required`` parent should unblock
+    reviewers, not final rollups or unrelated downstream work.
+    """
+    title, assignee = _child_title_assignee(conn, child_id)
+    if assignee in _REVIEW_GATE_ASSIGNEES:
+        return True
+    return title.startswith(_REVIEW_GATE_TITLE_PREFIXES)
+
+
+def _looks_like_remediation_child(
+    conn: sqlite3.Connection,
+    child_id: str,
+) -> bool:
+    """Heuristic for implementation/fix children of a request-changes handoff."""
+    title, assignee = _child_title_assignee(conn, child_id)
+    if any(marker in title for marker in _REMEDIATION_TITLE_MARKERS):
+        return True
+    return assignee in _REMEDIATION_ASSIGNEES and not (
+        title.startswith(("rollup", "final", "linear", "qa:", "review:", "security:"))
+    )
+
+
+def _handoff_block_satisfies_child_dependency(
+    conn: sqlite3.Connection,
+    *,
+    parent_id: str,
+    parent_status: str,
+    child_id: str,
+) -> bool:
+    """Return True when a blocked parent is a handoff to this child.
+
+    MIS-88 distinction: the blocked parent itself remains sticky-blocked so
+    the producer/reviewer is not respawned or auto-accepted, while specific
+    next-step children may proceed when the block reason is the handoff
+    contract they are meant to answer. Downstream rollups stay held until
+    reviewers/remediators complete normally.
+    """
+    if parent_status != "blocked":
+        return False
+    reason = (_latest_sticky_block_reason(conn, parent_id) or "").casefold()
+    if not reason:
+        return False
+    if reason.startswith(("review-required:", "review required:")):
+        return _looks_like_review_gate_child(conn, child_id)
+    if reason.startswith(("request changes:", "request-changes:", "changes requested:")):
+        return _looks_like_remediation_child(conn, child_id)
+    return False
+
+
+def _parent_dependency_satisfied(
+    conn: sqlite3.Connection,
+    *,
+    parent_id: str,
+    parent_status: str,
+    child_id: str,
+) -> bool:
+    if parent_status in ("done", "archived"):
+        return True
+    return _handoff_block_satisfies_child_dependency(
+        conn,
+        parent_id=parent_id,
+        parent_status=parent_status,
+        child_id=child_id,
+    )
+
+
+def _unsatisfied_parent_ids(conn: sqlite3.Connection, child_id: str) -> list[str]:
+    rows = conn.execute(
+        "SELECT t.id, t.status FROM tasks t "
+        "JOIN task_links l ON l.parent_id = t.id "
+        "WHERE l.child_id = ?",
+        (child_id,),
+    ).fetchall()
+    return [
+        row["id"] for row in rows
+        if not _parent_dependency_satisfied(
+            conn,
+            parent_id=row["id"],
+            parent_status=row["status"],
+            child_id=child_id,
+        )
+    ]
+
+
 def recompute_ready(conn: sqlite3.Connection) -> int:
-    """Promote ``todo`` tasks to ``ready`` when all parents are ``done`` or ``archived``.
+    """Promote ``todo`` tasks to ``ready`` when parent dependencies are satisfied.
+
+    A parent is normally satisfied when it is ``done`` or ``archived``.  MIS-88
+    adds narrow handoff satisfaction: an explicit sticky ``review-required``
+    block can satisfy QA/security/doc-review children, and an explicit sticky
+    ``REQUEST CHANGES`` block can satisfy remediation children.  The blocked
+    parent itself stays blocked; only the matching next-step child can move.
 
     Returns the number of tasks promoted.  Safe to call inside or outside
     an existing transaction; it opens its own IMMEDIATE txn.
@@ -2255,13 +2400,7 @@ def recompute_ready(conn: sqlite3.Connection) -> int:
                 # legitimate exit (it emits ``"unblocked"`` which flips
                 # this predicate back).
                 continue
-            parents = conn.execute(
-                "SELECT t.status FROM tasks t "
-                "JOIN task_links l ON l.parent_id = t.id "
-                "WHERE l.child_id = ?",
-                (task_id,),
-            ).fetchall()
-            if all(p["status"] in ("done", "archived") for p in parents):
+            if not _unsatisfied_parent_ids(conn, task_id):
                 # Blocked tasks also get their failure counters reset —
                 # this is effectively an auto-unblock (circuit-breaker
                 # recovery; worker-initiated blocks are skipped above).
@@ -2303,20 +2442,13 @@ def claim_task(
     expires = now + _resolve_claim_ttl_seconds(ttl_seconds)
     with write_txn(conn):
         # Structural invariant: never transition ready -> running while any
-        # parent is not yet 'done'. This is the single enforcement point
-        # regardless of which writer (create_task, link_tasks, unblock_task,
-        # release_stale_claims, manual SQL) set status='ready'. If a racy
-        # writer promoted a task with undone parents, demote it back to
-        # 'todo' here — recompute_ready will re-promote when the parents
-        # actually finish. See RCA at
-        # kanban/boards/cookai/workspaces/t_a6acd07d/root-cause.md.
-        undone = conn.execute(
-            "SELECT 1 FROM task_links l "
-            "JOIN tasks p ON p.id = l.parent_id "
-            "WHERE l.child_id = ? AND p.status NOT IN ('done', 'archived') LIMIT 1",
-            (task_id,),
-        ).fetchone()
-        if undone:
+        # parent dependency is unsatisfied.  Normal completion means the
+        # parent is done/archived; MIS-88 also allows a narrow class of
+        # explicit sticky handoffs (``review-required`` -> review children,
+        # ``REQUEST CHANGES`` -> remediation children) without auto-promoting
+        # the blocked parent itself.  If a racy writer promoted a task too
+        # broadly, demote it back to 'todo' here.
+        if _unsatisfied_parent_ids(conn, task_id):
             conn.execute(
                 "UPDATE tasks SET status = 'todo' "
                 "WHERE id = ? AND status = 'ready'",
@@ -3337,16 +3469,7 @@ def promote_task(
         )
 
     if not force:
-        parents = conn.execute(
-            "SELECT t.id, t.status FROM tasks t "
-            "JOIN task_links l ON l.parent_id = t.id "
-            "WHERE l.child_id = ?",
-            (task_id,),
-        ).fetchall()
-        unsatisfied = [
-            p["id"] for p in parents
-            if p["status"] not in ("done", "archived")
-        ]
+        unsatisfied = _unsatisfied_parent_ids(conn, task_id)
         if unsatisfied:
             return False, (
                 f"unsatisfied parent dependencies: "
@@ -3402,19 +3525,11 @@ def unblock_task(conn: sqlite3.Connection, task_id: str) -> bool:
                 """,
                 (now, int(stale["current_run_id"])),
             )
-        # Re-gate on parent completion before flipping 'blocked' back to
-        # 'ready'. Unconditionally setting status='ready' here bypasses the
-        # parent-completion invariant (the dispatcher trusts that column);
-        # if parents are still in progress the task must wait in 'todo'
-        # until recompute_ready picks it up. RCA: Bug 2 at
-        # kanban/boards/cookai/workspaces/t_a6acd07d/root-cause.md.
-        undone_parents = conn.execute(
-            "SELECT 1 FROM task_links l "
-            "JOIN tasks p ON p.id = l.parent_id "
-            "WHERE l.child_id = ? AND p.status != 'done' LIMIT 1",
-            (task_id,),
-        ).fetchone()
-        new_status = "todo" if undone_parents else "ready"
+        # Re-gate on parent dependency satisfaction before flipping 'blocked'
+        # back to 'ready'. This mirrors ``recompute_ready`` so explicit MIS-88
+        # handoff children can proceed while unrelated downstream work still
+        # waits for normal parent completion.
+        new_status = "todo" if _unsatisfied_parent_ids(conn, task_id) else "ready"
         cur = conn.execute(
             "UPDATE tasks SET status = ?, current_run_id = NULL, "
             "consecutive_failures = 0, last_failure_error = NULL "

@@ -48,6 +48,12 @@ def kanban_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return home
 
 
+def _task(conn, task_id: str) -> kb.Task:
+    task = kb.get_task(conn, task_id)
+    assert task is not None
+    return task
+
+
 # ---------------------------------------------------------------------------
 # Worker-initiated kanban_block must be sticky
 # ---------------------------------------------------------------------------
@@ -64,16 +70,16 @@ def test_worker_block_is_not_auto_promoted_by_recompute_ready(kanban_home: Path)
         assert kb.block_task(
             conn, tid,
             reason="review-required: please verify ACL change",
-            expected_run_id=kb.get_task(conn, tid).current_run_id,
+            expected_run_id=_task(conn, tid).current_run_id,
         )
-        assert kb.get_task(conn, tid).status == "blocked"
+        assert _task(conn, tid).status == "blocked"
 
         # Hammer the promotion code — exactly the dispatcher loop's
         # behaviour, just compressed in time.
         for _ in range(5):
             promoted = kb.recompute_ready(conn)
             assert promoted == 0, "worker-blocked task must not auto-promote"
-            assert kb.get_task(conn, tid).status == "blocked"
+            assert _task(conn, tid).status == "blocked"
 
 
 def test_worker_block_on_child_with_done_parents_is_still_sticky(kanban_home: Path) -> None:
@@ -90,13 +96,105 @@ def test_worker_block_on_child_with_done_parents_is_still_sticky(kanban_home: Pa
         kb.block_task(
             conn, child,
             reason="review-required: child needs sign-off",
-            expected_run_id=kb.get_task(conn, child).current_run_id,
+            expected_run_id=_task(conn, child).current_run_id,
         )
-        assert kb.get_task(conn, child).status == "blocked"
+        assert _task(conn, child).status == "blocked"
 
         promoted = kb.recompute_ready(conn)
         assert promoted == 0
-        assert kb.get_task(conn, child).status == "blocked"
+        assert _task(conn, child).status == "blocked"
+
+
+def test_review_required_parent_unblocks_review_children_only(kanban_home: Path) -> None:
+    """MIS-88: a producer's review-required block is sticky for the
+    producer, but counts as satisfied for QA/security children that must
+    inspect the handoff.  Final rollups remain held."""
+    with kb.connect() as conn:
+        impl = kb.create_task(conn, title="implement feature", assignee="mcbackend")
+        qa = kb.create_task(conn, title="QA: verify feature", assignee="mcqa", parents=[impl])
+        security = kb.create_task(
+            conn, title="security: verify feature", assignee="mcsecurity", parents=[impl]
+        )
+        rollup = kb.create_task(
+            conn, title="linear rollup", assignee="linearops", parents=[impl]
+        )
+
+        kb.claim_task(conn, impl)
+        kb.block_task(
+            conn, impl,
+            reason="review-required: implementation handoff ready",
+            expected_run_id=_task(conn, impl).current_run_id,
+        )
+
+        assert kb.recompute_ready(conn) == 2
+        assert _task(conn, impl).status == "blocked"
+        assert _task(conn, qa).status == "ready"
+        assert _task(conn, security).status == "ready"
+        assert _task(conn, rollup).status == "todo"
+
+
+def test_request_changes_parent_unblocks_remediation_child_only(kanban_home: Path) -> None:
+    """A reviewer that blocks with REQUEST CHANGES is a handoff to a
+    fix/remediation child, not permission for rollups to proceed."""
+    with kb.connect() as conn:
+        review = kb.create_task(conn, title="QA: review feature", assignee="mcqa")
+        fix = kb.create_task(
+            conn, title="fix requested QA changes", assignee="mcbackend", parents=[review]
+        )
+        rollup = kb.create_task(
+            conn, title="linear rollup", assignee="linearops", parents=[review]
+        )
+
+        kb.claim_task(conn, review)
+        kb.block_task(
+            conn, review,
+            reason="REQUEST CHANGES: failing acceptance check",
+            expected_run_id=_task(conn, review).current_run_id,
+        )
+
+        assert kb.recompute_ready(conn) == 1
+        assert _task(conn, review).status == "blocked"
+        assert _task(conn, fix).status == "ready"
+        assert _task(conn, rollup).status == "todo"
+
+
+def test_dispatch_dry_run_sees_review_child_spawnable(
+    kanban_home: Path, all_assignees_spawnable: None
+) -> None:
+    """The dispatcher tick must see the promoted review child as spawnable;
+    otherwise review-required gates still require manual intervention."""
+    with kb.connect() as conn:
+        impl = kb.create_task(conn, title="implement feature", assignee="mcbackend")
+        qa = kb.create_task(conn, title="QA: verify feature", assignee="mcqa", parents=[impl])
+        rollup = kb.create_task(
+            conn, title="linear rollup", assignee="linearops", parents=[impl]
+        )
+
+        kb.claim_task(conn, impl)
+        kb.block_task(
+            conn, impl,
+            reason="review-required: implementation handoff ready",
+            expected_run_id=_task(conn, impl).current_run_id,
+        )
+        res = kb.dispatch_once(conn, dry_run=True)
+
+        assert (qa, "mcqa", "") in res.spawned
+        assert all(spawn[0] != impl for spawn in res.spawned)
+        assert all(spawn[0] != rollup for spawn in res.spawned)
+        assert _task(conn, impl).status == "blocked"
+        assert _task(conn, qa).status == "ready"
+        assert _task(conn, rollup).status == "todo"
+
+        spawned: list[str] = []
+
+        def fake_spawn(task: kb.Task, workspace: str) -> int:
+            spawned.append(task.id)
+            return 12345
+
+        res = kb.dispatch_once(conn, spawn_fn=fake_spawn)
+        assert [spawn[0] for spawn in res.spawned] == [qa]
+        assert spawned == [qa]
+        assert _task(conn, qa).status == "running"
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +224,7 @@ def test_circuit_breaker_block_still_auto_promotes(kanban_home: Path) -> None:
 
         promoted = kb.recompute_ready(conn)
         assert promoted == 1
-        task = kb.get_task(conn, child)
+        task = _task(conn, child)
         assert task.status == "ready"
         assert task.consecutive_failures == 0
         assert task.last_failure_error is None
@@ -156,7 +254,7 @@ def test_gave_up_event_alone_does_not_make_block_sticky(kanban_home: Path) -> No
 
         promoted = kb.recompute_ready(conn)
         assert promoted == 1
-        assert kb.get_task(conn, child).status == "ready"
+        assert _task(conn, child).status == "ready"
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +273,11 @@ def test_unblock_clears_sticky_state_and_lets_block_recover(kanban_home: Path) -
         kb.block_task(
             conn, tid,
             reason="review-required: ...",
-            expected_run_id=kb.get_task(conn, tid).current_run_id,
+            expected_run_id=_task(conn, tid).current_run_id,
         )
         assert kb.unblock_task(conn, tid)
         # After unblock the task is no longer blocked at all.
-        assert kb.get_task(conn, tid).status == "ready"
+        assert _task(conn, tid).status == "ready"
 
         # Now simulate a *later* circuit-breaker block (no new
         # ``blocked`` event, just status flip).  The most recent
@@ -192,7 +290,7 @@ def test_unblock_clears_sticky_state_and_lets_block_recover(kanban_home: Path) -
 
         promoted = kb.recompute_ready(conn)
         assert promoted == 1
-        assert kb.get_task(conn, tid).status == "ready"
+        assert _task(conn, tid).status == "ready"
 
 
 # ---------------------------------------------------------------------------
@@ -226,13 +324,13 @@ def test_protocol_violation_loop_is_broken(kanban_home: Path) -> None:
         kb.block_task(
             conn, tid,
             reason="review-required: human eyes please",
-            expected_run_id=kb.get_task(conn, tid).current_run_id,
+            expected_run_id=_task(conn, tid).current_run_id,
         )
-        assert kb.get_task(conn, tid).status == "blocked"
+        assert _task(conn, tid).status == "blocked"
 
         # First dispatcher tick — must NOT promote.
         assert kb.recompute_ready(conn) == 0
-        assert kb.get_task(conn, tid).status == "blocked"
+        assert _task(conn, tid).status == "blocked"
 
         # Simulate the (hypothetical) protocol_violation + gave_up
         # entries that the dispatcher would have written if the bug
@@ -257,7 +355,7 @@ def test_protocol_violation_loop_is_broken(kanban_home: Path) -> None:
         for _ in range(3):
             promoted = kb.recompute_ready(conn)
             assert promoted == 0
-            assert kb.get_task(conn, tid).status == "blocked"
+            assert _task(conn, tid).status == "blocked"
 
 
 # ---------------------------------------------------------------------------
