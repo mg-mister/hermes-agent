@@ -211,7 +211,7 @@ def emit_llms_index() -> str:
     lines.append("")
     lines.append(
         "Install: `curl -fsSL https://raw.githubusercontent.com/NousResearch/"
-        "hermes-agent/main/scripts/install.sh | bash`  "
+        "hermes-agent/main/scripts/install.sh -o /tmp/hermes-install.sh && bash /tmp/hermes-install.sh`  "
         "(Linux, macOS, WSL2, Termux)"
     )
     lines.append("")

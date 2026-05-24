@@ -445,7 +445,7 @@ Persistent memory via the `brv` CLI — hierarchical knowledge tree with tiered 
 **Setup:**
 ```bash
 # Install the CLI first
-curl -fsSL https://byterover.dev/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://byterover.dev/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 
 # Then configure Hermes
 hermes memory setup    # select "byterover"

@@ -6,7 +6,7 @@ Persistent memory via the `brv` CLI — hierarchical knowledge tree with tiered 
 
 Install the ByteRover CLI:
 ```bash
-curl -fsSL https://byterover.dev/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://byterover.dev/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 # or
 npm install -g byterover-cli
 ```

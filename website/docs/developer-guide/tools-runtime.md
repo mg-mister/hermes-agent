@@ -189,7 +189,7 @@ The terminal tool integrates a dangerous-command approval system defined in `too
    - SQL destructive operations (`DROP TABLE`, `DELETE FROM` without `WHERE`)
    - System config overwrites (`> /etc/`)
    - Service manipulation (`systemctl stop`)
-   - Remote code execution (`curl | sh`)
+   - Remote code execution (`download-then-run installer`)
    - Fork bombs, process kills, etc.
 
 2. **Detection** — before executing any terminal command, `detect_dangerous_command(command)` checks against all patterns.

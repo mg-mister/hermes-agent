@@ -675,7 +675,7 @@ class HindsightMemoryProvider(MemoryProvider):
         print("\n  Checking dependencies...")
         uv_path = shutil.which("uv")
         if not uv_path:
-            print("  ⚠ uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh")
+            print("  ⚠ uv not found — install it: tmp=\"$(mktemp)\" && trap 'rm -f \"$tmp\"' EXIT && curl -LsSf https://astral.sh/uv/install.sh -o \"$tmp\" && sh \"$tmp\"")
             print(f"  Then run manually: uv pip install --python {sys.executable} {' '.join(deps_to_install)}")
         else:
             try:

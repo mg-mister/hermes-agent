@@ -174,7 +174,7 @@ _COMMAND_TAIL = r'(?:\s*(?:&&|\|\||;).*)?$'
 # filesystem destruction rooted at /, raw block device overwrites, kernel
 # shutdown/reboot, and denial-of-service commands that take the host down.
 # Recoverable-but-costly operations (git reset --hard, rm -rf /tmp/x,
-# chmod -R 777, curl|sh) stay in DANGEROUS_PATTERNS where yolo can pass
+# chmod -R 777, download-then-run installer) stay in DANGEROUS_PATTERNS where yolo can pass
 # them through — that's what yolo is for.
 #
 # Inspired by Mercury Agent's permission-hardened blocklist

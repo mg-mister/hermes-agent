@@ -202,7 +202,7 @@ your conversation context.
   wasn't visible before is now blocking input. Dismiss it (usually
   `escape` or click the close button) before retrying.
 - **"blocked pattern in type text"** — You tried to `type` a shell command
-  that matches the dangerous-pattern block list (`curl ... | bash`,
+  that matches the dangerous-pattern block list (`downloaded installer piped to shell`,
   `sudo rm -rf`, etc.). Break the command up or reconsider.
 
 ## When NOT to use `computer_use`

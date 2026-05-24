@@ -7,7 +7,7 @@ search). Local-first with optional cloud sync.
 Original PR #3499 by hieuntg81, adapted to MemoryProvider ABC.
 
 Requires: ``brv`` CLI installed (npm install -g byterover-cli or
-curl -fsSL https://byterover.dev/install.sh | sh).
+tmp="$(mktemp)" && curl -fsSL https://byterover.dev/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp").
 
 Config via environment variables (profile-scoped via each profile's .env):
   BRV_API_KEY   — ByteRover API key (for cloud features, optional for local)

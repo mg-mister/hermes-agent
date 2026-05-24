@@ -15,7 +15,7 @@ Get Hermes Agent up and running in under two minutes with the one-line installer
 For a git-based install that tracks `main` and gives you the latest changes immediately:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp"
 ```
 
 ### Windows (native, PowerShell) — Early Beta
@@ -49,7 +49,7 @@ If you prefer WSL2, the Linux installer above works inside it; both native and W
 Hermes now ships a Termux-aware installer path too:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp"
 ```
 
 The installer detects Termux automatically and switches to a tested Android flow:
@@ -163,12 +163,12 @@ Running Hermes as a dedicated unprivileged user (e.g. a `hermes` systemd service
 
 2. **As the unprivileged service user**, run the regular installer. It will detect the missing sudo, skip `--with-deps`, and install Chromium into the user's local Playwright cache:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+   tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp"
    ```
 
    If you want to skip the Playwright step entirely — for example because you're running headless and don't need browser automation — pass `--skip-browser`:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-browser
+   tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp" -s -- --skip-browser
    ```
 
 3. **Make `hermes` available to the service user's shells.** The installer writes the launcher to `~/.local/bin/hermes`. System service accounts often have a minimal PATH that doesn't include `~/.local/bin`. Either add it to the user's environment, or symlink the launcher into a system location:

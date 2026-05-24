@@ -75,6 +75,95 @@ def test_read_codex_tokens_missing(tmp_path, monkeypatch):
     assert exc.value.code == "codex_auth_missing"
 
 
+def test_read_codex_tokens_falls_back_to_global_store_in_profile_home(tmp_path, monkeypatch):
+    real_home = tmp_path
+    global_home = real_home / ".hermes"
+    profile_home = global_home / "profiles" / "coder"
+    _setup_hermes_auth(global_home, access_token="global-access", refresh_token="global-refresh")
+    profile_home.mkdir(parents=True, exist_ok=True)
+    (profile_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setattr(Path, "home", lambda: real_home)
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    data = _read_codex_tokens()
+
+    assert data["tokens"]["access_token"] == "global-access"
+    assert data["tokens"]["refresh_token"] == "global-refresh"
+    assert data["source"] == "global-hermes-auth-store"
+    assert data["auth_file"] == str(global_home / "auth.json")
+
+
+def test_read_codex_tokens_profile_store_wins_over_global_store(tmp_path, monkeypatch):
+    real_home = tmp_path
+    global_home = real_home / ".hermes"
+    profile_home = global_home / "profiles" / "coder"
+    _setup_hermes_auth(global_home, access_token="global-access", refresh_token="global-refresh")
+    _setup_hermes_auth(profile_home, access_token="profile-access", refresh_token="profile-refresh")
+    monkeypatch.setattr(Path, "home", lambda: real_home)
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    data = _read_codex_tokens()
+
+    assert data["tokens"]["access_token"] == "profile-access"
+    assert data["tokens"]["refresh_token"] == "profile-refresh"
+    assert data["source"] == "hermes-auth-store"
+    assert data["auth_file"] == str(profile_home / "auth.json")
+
+
+def test_read_codex_tokens_uses_global_store_when_profile_state_is_empty_shadow(tmp_path, monkeypatch):
+    real_home = tmp_path
+    global_home = real_home / ".hermes"
+    profile_home = global_home / "profiles" / "coder"
+    _setup_hermes_auth(global_home, access_token="global-access", refresh_token="global-refresh")
+    profile_home.mkdir(parents=True, exist_ok=True)
+    (profile_home / "auth.json").write_text(json.dumps({
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {},
+            },
+        },
+    }))
+    monkeypatch.setattr(Path, "home", lambda: real_home)
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    data = _read_codex_tokens()
+
+    assert data["tokens"]["access_token"] == "global-access"
+    assert data["tokens"]["refresh_token"] == "global-refresh"
+    assert data["source"] == "global-hermes-auth-store"
+    assert data["auth_file"] == str(global_home / "auth.json")
+
+
+def test_codex_refresh_after_profile_fallback_writes_global_source_only(tmp_path, monkeypatch):
+    real_home = tmp_path
+    global_home = real_home / ".hermes"
+    profile_home = global_home / "profiles" / "coder"
+    _setup_hermes_auth(global_home, access_token="global-old", refresh_token="global-refresh")
+    profile_home.mkdir(parents=True, exist_ok=True)
+    (profile_home / "auth.json").write_text(json.dumps({"version": 1, "providers": {}}))
+    monkeypatch.setattr(Path, "home", lambda: real_home)
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    def _fake_refresh(access_token, refresh_token, *, timeout_seconds):
+        assert access_token == "global-old"
+        assert refresh_token == "global-refresh"
+        return {"access_token": "global-new", "refresh_token": "global-refresh-new"}
+
+    monkeypatch.setattr("hermes_cli.auth.refresh_codex_oauth_pure", _fake_refresh)
+
+    resolved = resolve_codex_runtime_credentials(force_refresh=True, refresh_if_expiring=False)
+
+    assert resolved["api_key"] == "global-new"
+    global_store = json.loads((global_home / "auth.json").read_text())
+    profile_store = json.loads((profile_home / "auth.json").read_text())
+    assert global_store["providers"]["openai-codex"]["tokens"] == {
+        "access_token": "global-new",
+        "refresh_token": "global-refresh-new",
+    }
+    assert "openai-codex" not in profile_store["providers"]
+
+
 def test_resolve_codex_runtime_credentials_missing_access_token(tmp_path, monkeypatch):
     hermes_home = tmp_path / "hermes"
     _setup_hermes_auth(hermes_home, access_token="")
@@ -94,7 +183,7 @@ def test_resolve_codex_runtime_credentials_refreshes_expiring_token(tmp_path, mo
 
     called = {"count": 0}
 
-    def _fake_refresh(tokens, timeout_seconds):
+    def _fake_refresh(tokens, timeout_seconds, **kwargs):
         called["count"] += 1
         return {"access_token": "access-new", "refresh_token": "refresh-new"}
 
@@ -113,7 +202,7 @@ def test_resolve_codex_runtime_credentials_force_refresh(tmp_path, monkeypatch):
 
     called = {"count": 0}
 
-    def _fake_refresh(tokens, timeout_seconds):
+    def _fake_refresh(tokens, timeout_seconds, **kwargs):
         called["count"] += 1
         return {"access_token": "access-forced", "refresh_token": "refresh-new"}
 

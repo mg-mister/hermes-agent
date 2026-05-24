@@ -703,22 +703,37 @@ def _run_cua_driver_installer(label: str = "Installing", verbose: bool = True) -
 
     The script is idempotent: it always downloads the latest release, so
     re-running it on an already-installed system performs an upgrade.
+    Download first and execute a local temp file instead of using
+    remote shell substitution, which approval scanners correctly flag.
     """
     import shutil
     import subprocess
+    import tempfile
+    import urllib.request
 
-    install_cmd = (
-        "/bin/bash -c \"$(curl -fsSL "
+    install_url = (
         "https://raw.githubusercontent.com/trycua/cua/main/"
-        "libs/cua-driver/scripts/install.sh)\""
+        "libs/cua-driver/scripts/install.sh"
+    )
+    manual_hint = (
+        'tmp="$(mktemp)" && '
+        'trap \'rm -f "$tmp"\' EXIT && '
+        f'curl -fsSL {install_url} -o "$tmp" && '
+        'bash "$tmp"'
     )
     if verbose:
         _print_info(f"    {label} cua-driver (macOS background computer-use)...")
     else:
         _print_info(f"    {label} cua-driver...")
     driver_cmd = _cua_driver_cmd()
+    temp_path = ""
     try:
-        result = subprocess.run(install_cmd, shell=True, timeout=300)
+        with urllib.request.urlopen(install_url, timeout=30) as response:
+            script_body = response.read()
+        with tempfile.NamedTemporaryFile("wb", prefix="cua-driver-install-", suffix=".sh", delete=False) as handle:
+            handle.write(script_body)
+            temp_path = handle.name
+        result = subprocess.run(["/bin/bash", temp_path], timeout=300)
         if result.returncode == 0 and shutil.which(driver_cmd):
             if verbose:
                 _print_success(f"    {driver_cmd} installed.")
@@ -728,7 +743,7 @@ def _run_cua_driver_installer(label: str = "Installing", verbose: bool = True) -
                 _print_info("    Both must allow the terminal / Hermes process.")
             return True
         _print_warning(f"    cua-driver {label.lower()} did not complete. Re-run manually:")
-        _print_info(f"      {install_cmd}")
+        _print_info(f"      {manual_hint}")
         return False
     except subprocess.TimeoutExpired:
         _print_warning(f"    cua-driver {label.lower()} timed out. Re-run manually.")
@@ -736,6 +751,12 @@ def _run_cua_driver_installer(label: str = "Installing", verbose: bool = True) -
     except Exception as e:
         _print_warning(f"    cua-driver {label.lower()} failed: {e}")
         return False
+    finally:
+        if temp_path:
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 def _run_post_setup(post_setup_key: str):

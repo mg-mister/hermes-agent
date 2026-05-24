@@ -32,7 +32,7 @@ body:
       label: Steps Taken
       description: What did you do? Include the exact commands you ran.
       placeholder: |
-        1. Ran the install script: `curl -fsSL ... | bash`
+        1. Ran the install script: `downloaded installer executed with bash`
         2. Ran `hermes setup` and chose "Quick setup"
         3. Selected OpenRouter, entered API key
         4. Ran `hermes chat` and got error...
@@ -44,7 +44,7 @@ body:
     attributes:
       label: Installation Method
       options:
-        - Install script (curl | bash)
+        - Install script (download-then-run installer)
         - Manual clone + pip/uv install
         - PowerShell installer (Windows)
         - Docker

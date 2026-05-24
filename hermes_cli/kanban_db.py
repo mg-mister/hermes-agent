@@ -5558,6 +5558,46 @@ def _worker_terminal_timeout_env(
     return str(desired)
 
 
+def _canonical_acpx_guard_real_home(home: Optional[str]) -> Path:
+    """Return the real Unix home for ACPX guard state from a worker HOME."""
+    raw_home = (home or "").strip()
+    home_path = Path(raw_home).expanduser() if raw_home else Path.home()
+    parts = home_path.parts
+    try:
+        hermes_idx = parts.index(".hermes")
+    except ValueError:
+        return home_path
+    if (
+        hermes_idx + 3 < len(parts)
+        and parts[hermes_idx + 1] == "profiles"
+        and parts[-1] == "home"
+    ):
+        prefix = parts[:hermes_idx]
+        return Path(*prefix) if prefix else Path(home_path.anchor or "/")
+    return home_path
+
+
+def _inject_acpx_guard_env(env: dict[str, str]) -> None:
+    """Canonicalize ACPX guard paths for profile-home worker execution.
+
+    Kanban workers may inherit stale ACPX_GUARD_* paths from a dispatcher or
+    run with HOME under ``<real>/.hermes/profiles/<profile>/home``. Guarded
+    Codex/Claude helpers need shared policy, log, usage, and auth state rooted
+    at the real Unix home, not inside the profile-isolated HOME. Set these
+    values explicitly so inherited stale paths cannot leak into the worker.
+    """
+    real_home = _canonical_acpx_guard_real_home(env.get("HOME"))
+    hermes_root = real_home / ".hermes"
+    env["ACPX_GUARD_REAL_HOME"] = str(real_home)
+    env["ACPX_GUARD_HOME"] = str(hermes_root / "acpx")
+    env["ACPX_GUARD_LOG_DIR"] = str(hermes_root / "logs" / "acpx")
+    env["ACPX_GUARD_USAGE_HOME"] = str(real_home)
+    env["ACPX_GUARD_AGENT_HOME"] = str(real_home)
+    env["ACPX_GUARD_BWS_WRAPPER"] = str(
+        hermes_root / "profiles" / "mister" / "scripts" / "bws-scope-env.py"
+    )
+
+
 def _default_spawn(
     task: Task,
     workspace: str,
@@ -5586,6 +5626,7 @@ def _default_spawn(
 
     prompt = f"work kanban task {task.id}"
     env = dict(os.environ)
+    _inject_acpx_guard_env(env)
 
     # Inject HERMES_HOME so the worker reads the profile-scoped config.yaml
     # (fallback_providers, toolsets, agent settings, etc.) instead of the root

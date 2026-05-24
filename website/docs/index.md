@@ -21,7 +21,7 @@ The self-improving AI agent built by [Nous Research](https://nousresearch.com). 
 **Linux / macOS / WSL2**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp"
 ```
 
 **Windows (native, PowerShell)** — *early beta, [details →](/docs/user-guide/windows-native)*

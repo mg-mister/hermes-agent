@@ -150,8 +150,19 @@ to find the parent assistant message, keeping groups intact.
 ### Phase 3: Generate Structured Summary
 
 :::warning Summary model context length
-The summary model must have a context window **at least as large** as the main agent model's. The entire middle section is sent to the summary model in a single `call_llm(task="compression")` call. If the summary model's context is smaller, the API returns a context-length error — `_generate_summary()` catches it, logs a warning, and returns `None`. The compressor then drops the middle turns **without a summary**, silently losing conversation context. This is the most common cause of degraded compaction quality.
+The summary model should have a context window at least as large as the main agent model's. The entire middle section is sent to the summary model in a single `call_llm(task="compression")` call. If the summary model's context is smaller, the API returns a context-length error; `_generate_summary()` catches it and first tries the safer recovery paths below before giving up on that compression attempt.
 :::
+
+### Summary failure handling
+
+Compression is designed to fail soft rather than corrupt or permanently lose a session:
+
+- **Model unavailable / timeout / invalid JSON / premature stream close** — if `auxiliary.compression.model` differs from the main model, Hermes falls back to the main model once and retries summary generation immediately.
+- **Provider connection errors** — auxiliary calls classify httpx/httpcore stream-close errors such as `peer closed connection`, `response ended prematurely`, `unexpected EOF`, and `incomplete chunked read` as transient connection errors. The cached auxiliary client is evicted so the next attempt does not reuse a poisoned transport.
+- **Unknown summary failure** — Hermes makes one best-effort retry on the main model when it has not already done so.
+- **Repeated transient failures** — summary attempts enter a short cooldown (`30s` for invalid JSON or stream-close, otherwise `60s`) and the current compression attempt returns without a generated summary.
+
+Logs intentionally keep the user-facing failure concise while preserving enough operator context: provider, summary model, main model, base URL, and a bounded error string. Use verbose/debug logs when you need the full traceback, but do not paste credential-bearing provider URLs or API keys into issues or reports.
 
 The middle turns are summarized using the auxiliary LLM with a structured
 template:

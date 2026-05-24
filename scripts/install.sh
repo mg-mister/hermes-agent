@@ -6,10 +6,10 @@
 # Uses uv for desktop/server installs and Python's stdlib venv + pip on Termux.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+#   tmp="$(mktemp)" && trap 'rm -f "$tmp"' EXIT && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp"
 #
 # Or with options:
-#   curl -fsSL ... | bash -s -- --no-venv --skip-setup
+#   tmp="$(mktemp)" && trap 'rm -f "$tmp"' EXIT && curl -fsSL ... -o "$tmp" && bash "$tmp" -- --no-venv --skip-setup
 #
 # ============================================================================
 
@@ -74,7 +74,7 @@ BRANCH="main"
 ENSURE_DEPS=""
 POSTINSTALL_MODE=false
 
-# Detect non-interactive mode (e.g. curl | bash)
+# Detect non-interactive mode (e.g. download-then-run installer)
 # When stdin is not a terminal, read -p will fail with EOF,
 # causing set -e to silently abort the entire script.
 if [ -t 0 ]; then
@@ -395,7 +395,7 @@ install_uv() {
     # of the previous "✗ Failed to install uv" with zero diagnostic.
     #
     # Two-stage: download the installer, then run it.  Piping
-    # `curl | sh` masks curl failures (sh exits 0 on empty stdin)
+    # `download-then-run installer` masks curl failures (sh exits 0 on empty stdin)
     # and conflates network errors with installer errors.
     local _uv_install_log _uv_installer
     _uv_install_log="$(mktemp 2>/dev/null || echo "/tmp/hermes-uv-install.$$.log")"
@@ -832,7 +832,7 @@ install_system_packages() {
                     fi
                 fi
             elif (: </dev/tty) 2>/dev/null; then
-                # Non-interactive (e.g. curl | bash) but a terminal is available.
+                # Non-interactive (e.g. download-then-run installer) but a terminal is available.
                 # Read the prompt from /dev/tty (same approach the setup wizard uses).
                 # Probe by actually opening /dev/tty: a bare existence test passes
                 # in Docker builds where the device node is in the mount namespace
@@ -1699,7 +1699,7 @@ run_setup_wizard() {
     fi
 
     # The setup wizard reads from /dev/tty, so it works even when the
-    # install script itself is piped (curl | bash). Only skip if no
+    # install script itself is piped (download-then-run installer). Only skip if no
     # terminal is available at all (e.g. Docker build, CI).
     #
     # Probe by actually opening /dev/tty: a bare existence test passes

@@ -307,7 +307,7 @@ pip3 install --no-build-isolation axolotl[flash-attn,deepspeed]
 
 Example 2 (bash):
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+tmp="$(mktemp)" && curl -LsSf https://astral.sh/uv/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 source $HOME/.local/bin/env
 ```
 

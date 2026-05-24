@@ -31,7 +31,7 @@
 ## 快速安装
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp"
 ```
 
 支持 Linux、macOS、WSL2 和 Android (Termux)。安装程序会自动处理平台特定的配置。
@@ -175,7 +175,7 @@ cd hermes-agent
 手动安装（等效于上述命令）：
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+tmp="$(mktemp)" && curl -LsSf https://astral.sh/uv/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 uv venv venv --python 3.11
 source venv/bin/activate
 uv pip install -e ".[all,dev]"

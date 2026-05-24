@@ -33,7 +33,7 @@ Use any model you want — [Nous Portal](https://portal.nousresearch.com), [Open
 ### Linux, macOS, WSL2, Termux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
+tmp="$(mktemp)" && curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh -o "$tmp" && bash "$tmp" && rm -f "$tmp"
 ```
 
 ### Windows (native, PowerShell) — Early Beta
@@ -189,7 +189,7 @@ cd hermes-agent
 Manual path (equivalent to the above):
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+tmp="$(mktemp)" && curl -LsSf https://astral.sh/uv/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 uv venv .venv --python 3.11
 source .venv/bin/activate
 uv pip install -e ".[all,dev]"

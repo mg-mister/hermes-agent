@@ -3,7 +3,7 @@
 ## Install the CLI
 
 ```bash
-curl -fsSL https://cli.inference.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://cli.inference.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 ## Login
@@ -41,7 +41,7 @@ infsh update
 Or reinstall:
 
 ```bash
-curl -fsSL https://cli.inference.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://cli.inference.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 ## Troubleshooting

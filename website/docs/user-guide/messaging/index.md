@@ -328,6 +328,19 @@ Each `/background` prompt spawns a **separate agent instance** that runs asynchr
 - **Non-blocking** — your main chat stays fully interactive. Send messages, run other commands, or start more background tasks while it works.
 - **Result delivery** — when the task finishes, the result is sent back to the **same chat or channel** where you issued the command, prefixed with "✅ Background task complete". If it fails, you'll see "❌ Background task failed" with the error.
 
+### Attachments in background results
+
+Background results use the gateway's native-attachment extraction and allowlist checks. When an agent returns a local attachment directive such as `MEDIA:/path/to/file.png`, the gateway removes the directive from visible chat text and sends the validated file separately.
+
+Attachment delivery is intentionally conservative:
+
+- Only existing local files under Hermes-managed media caches, or under roots explicitly allowlisted with `HERMES_MEDIA_ALLOW_DIRS`, can be uploaded.
+- Extracted local file directives that fail validation, such as missing files or paths outside allowed roots, are skipped and recorded in the gateway log; they do not make the whole background task fail.
+- In this branch, malformed placeholder examples are not normalized consistently across base/background and streaming delivery. Avoid returning placeholders such as `MEDIA:`, `MEDIA:<screenshot_path>`, or `MEDIA:/absolute/path` in user-facing text unless the reviewed MEDIA hardening branch is also present.
+- Ordinary prose that merely mentions `MEDIA:` is preserved by base extraction, but streaming cleanup in this checkout can still strip text like `MEDIA: files`. The accepted hardening to preserve that prose while stripping empty/extensionless local placeholders is pending here.
+
+If a generated file should be delivered from a non-standard directory, set `HERMES_MEDIA_ALLOW_DIRS` to an absolute path (or multiple paths separated by your OS path separator) before starting the gateway.
+
 ### Background Process Notifications
 
 When the agent running a background session uses `terminal(background=true)` to start long-running processes (servers, builds, etc.), the gateway can push status updates to your chat. Control this with `display.background_process_notifications` in `~/.hermes/config.yaml`:

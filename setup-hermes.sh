@@ -85,7 +85,7 @@ else
         # Capture installer output so a failure shows the user WHY
         # (network, glibc mismatch on old distros, missing curl, disk
         # full, etc.) instead of "✗ Failed to install uv" with zero
-        # diagnostic.  Two-stage to avoid `curl | sh` masking curl
+        # diagnostic.  Two-stage to avoid `download-then-run installer` masking curl
         # failures (sh exits 0 on empty stdin under no pipefail).
         _uv_log="$(mktemp 2>/dev/null || echo "/tmp/hermes-uv-install.$$.log")"
         _uv_installer="$(mktemp 2>/dev/null || echo "/tmp/hermes-uv-installer.$$.sh")"

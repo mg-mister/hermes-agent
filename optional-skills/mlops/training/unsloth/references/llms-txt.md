@@ -185,7 +185,7 @@ Example 4 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 ---
@@ -1260,7 +1260,7 @@ Example 2 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 3 (bash):
@@ -3540,7 +3540,7 @@ cd xformers && python setup.py install && cd ..
 bash
 uv pip install unsloth
 bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh && source $HOME/.local/bin/env
+   tmp="$(mktemp)" && curl -LsSf https://astral.sh/uv/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp" && source $HOME/.local/bin/env
    bash
    mkdir 'unsloth-blackwell' && cd 'unsloth-blackwell'
    uv venv .venv --python=3.12 --seed
@@ -3751,7 +3751,7 @@ Example 3 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 4 (bash):
@@ -3972,7 +3972,7 @@ Example 2 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 3 (bash):
@@ -4472,7 +4472,7 @@ Example 3 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 4 (bash):
@@ -4591,7 +4591,7 @@ Example 1 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 2 (unknown):
@@ -5288,7 +5288,7 @@ Example 4 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 ---
@@ -5924,7 +5924,7 @@ Example 2 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 3 (bash):
@@ -7138,7 +7138,7 @@ Example 3 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 4 (bash):
@@ -7811,7 +7811,7 @@ Example 2 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 3 (unknown):
@@ -11478,7 +11478,7 @@ Example 2 (bash):
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Example 3 (bash):

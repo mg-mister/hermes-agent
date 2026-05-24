@@ -132,7 +132,7 @@ The following patterns trigger approval prompts (defined in `tools/approval.py`)
 | Fork bomb patterns | Fork bombs |
 | `bash -c` / `sh -c` / `zsh -c` / `ksh -c` | Shell command execution via `-c` flag (including combined flags like `-lc`) |
 | `python -e` / `perl -e` / `ruby -e` / `node -c` | Script execution via `-e`/`-c` flag |
-| `curl ... \| sh` / `wget ... \| sh` | Pipe remote content to shell |
+| `downloaded installer piped to shell` / `downloaded installer piped to shell` | Pipe remote content to shell |
 | `bash <(curl ...)` / `sh <(wget ...)` | Execute remote script via process substitution |
 | `tee` to `/etc/`, `~/.ssh/`, `~/.hermes/.env` | Overwrite sensitive file via tee |
 | `>` / `>>` to `/etc/`, `~/.ssh/`, `~/.hermes/.env` | Overwrite sensitive file via redirection |
@@ -528,7 +528,7 @@ The host-substring guard (which blocks lookalike Unicode domain tricks even when
 Hermes integrates [tirith](https://github.com/sheeki03/tirith) for content-level command scanning before execution. Tirith detects threats that pattern matching alone misses:
 
 - Homograph URL spoofing (internationalized domain attacks)
-- Pipe-to-interpreter patterns (`curl | bash`, `wget | sh`)
+- Pipe-to-interpreter patterns (`download-then-run installer`, `wget | sh`)
 - Terminal injection attacks
 
 Tirith auto-installs from GitHub releases on first use with SHA-256 checksum verification (and cosign provenance verification if cosign is available).

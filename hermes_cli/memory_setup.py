@@ -105,7 +105,7 @@ def _install_dependencies(provider_name: str) -> None:
     uv_path = shutil.which("uv")
     if not uv_path:
         print(f"  ⚠ uv not found — cannot install dependencies")
-        print(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
+        print("  Install uv: tmp=\"$(mktemp)\" && trap 'rm -f \"$tmp\"' EXIT && curl -LsSf https://astral.sh/uv/install.sh -o \"$tmp\" && sh \"$tmp\"")
         print(f"  Then re-run: hermes memory setup")
         return
 

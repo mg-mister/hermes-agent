@@ -887,11 +887,29 @@ def _load_global_auth_store() -> Dict[str, Any]:
         return {}
 
 
+def _codex_state_has_runtime_tokens(state: Any) -> bool:
+    """Return True when a Codex provider state can supply runtime OAuth tokens."""
+    if not isinstance(state, dict):
+        return False
+    tokens = state.get("tokens")
+    if not isinstance(tokens, dict):
+        return False
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+    return bool(
+        isinstance(access_token, str)
+        and access_token.strip()
+        and isinstance(refresh_token, str)
+        and refresh_token.strip()
+    )
+
+
 def _auth_lock_path() -> Path:
     return _auth_file_path().with_suffix(".lock")
 
 
 _auth_lock_holder = threading.local()
+_codex_source_auth_lock_holder = threading.local()
 
 
 @contextmanager
@@ -1025,8 +1043,8 @@ def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
     return {"version": AUTH_STORE_VERSION, "providers": {}}
 
 
-def _save_auth_store(auth_store: Dict[str, Any]) -> Path:
-    auth_file = _auth_file_path()
+def _save_auth_store(auth_store: Dict[str, Any], auth_file: Optional[Path] = None) -> Path:
+    auth_file = auth_file or _auth_file_path()
     auth_file.parent.mkdir(parents=True, exist_ok=True)
     # Tighten parent dir to 0o700 so siblings can't traverse to creds.
     # No-op on Windows (POSIX mode bits not enforced); ignore failures.
@@ -3126,18 +3144,44 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
 # where one app's refresh invalidates the other's session.
 # =============================================================================
 
-def _read_codex_tokens(*, _lock: bool = True) -> Dict[str, Any]:
-    """Read Codex OAuth tokens from Hermes auth store (~/.hermes/auth.json).
-    
-    Returns dict with 'tokens' (access_token, refresh_token) and 'last_refresh'.
-    Raises AuthError if no Codex tokens are stored.
+def _read_codex_tokens(
+    *,
+    _lock: bool = True,
+    auth_file: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Read Codex OAuth tokens from Hermes auth store.
+
+    In profile mode, a profile-local Codex auth entry wins. If the profile has
+    no Codex state, fall back to the global-root auth store read-only so Kanban
+    workers can use the owner's existing Codex OAuth session without copying
+    secrets into every profile home.
+
+    Returns dict with 'tokens' (access_token, refresh_token), 'last_refresh',
+    'source', and the source 'auth_file'. Raises AuthError if no Codex tokens
+    are stored.
     """
-    if _lock:
+    source_auth_file = auth_file or _auth_file_path()
+    source = "hermes-auth-store"
+
+    if auth_file is not None:
+        auth_store = _load_auth_store(auth_file)
+    elif _lock:
         with _auth_store_lock():
             auth_store = _load_auth_store()
     else:
         auth_store = _load_auth_store()
     state = _load_provider_state(auth_store, "openai-codex")
+
+    if (not _codex_state_has_runtime_tokens(state)) and auth_file is None:
+        global_store = _load_global_auth_store()
+        global_state = _load_provider_state(global_store, "openai-codex") if global_store else None
+        if _codex_state_has_runtime_tokens(global_state):
+            state = global_state
+            global_auth_file = _global_auth_file_path()
+            if global_auth_file is not None:
+                source_auth_file = global_auth_file
+            source = "global-hermes-auth-store"
+
     if not state:
         raise AuthError(
             "No Codex credentials stored. Run `hermes auth` to authenticate.",
@@ -3172,21 +3216,56 @@ def _read_codex_tokens(*, _lock: bool = True) -> Dict[str, Any]:
     return {
         "tokens": tokens,
         "last_refresh": state.get("last_refresh"),
+        "source": source,
+        "auth_file": str(source_auth_file),
     }
 
 
-def _save_codex_tokens(tokens: Dict[str, str], last_refresh: str = None) -> None:
-    """Save Codex OAuth tokens to Hermes auth store (~/.hermes/auth.json)."""
+@contextmanager
+def _codex_source_auth_lock(
+    auth_file: Optional[Path],
+    *,
+    timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS,
+):
+    """Lock the auth store that supplied Codex tokens before refresh writeback."""
+    if auth_file is None:
+        with _auth_store_lock(timeout_seconds=timeout_seconds):
+            yield
+        return
+    try:
+        is_profile_store = auth_file.resolve(strict=False) == _auth_file_path().resolve(strict=False)
+    except Exception:
+        is_profile_store = auth_file == _auth_file_path()
+    if is_profile_store:
+        with _auth_store_lock(timeout_seconds=timeout_seconds):
+            yield
+        return
+    with _file_lock(
+        auth_file.with_suffix(".lock"),
+        _codex_source_auth_lock_holder,
+        timeout_seconds,
+        "Timed out waiting for Codex auth source lock",
+    ):
+        yield
+
+
+def _save_codex_tokens(
+    tokens: Dict[str, str],
+    last_refresh: Optional[str] = None,
+    *,
+    auth_file: Optional[Path] = None,
+) -> None:
+    """Save Codex OAuth tokens to a Hermes auth store."""
     if last_refresh is None:
         last_refresh = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    with _auth_store_lock():
-        auth_store = _load_auth_store()
+    with _codex_source_auth_lock(auth_file):
+        auth_store = _load_auth_store(auth_file)
         state = _load_provider_state(auth_store, "openai-codex") or {}
         state["tokens"] = tokens
         state["last_refresh"] = last_refresh
         state["auth_mode"] = "chatgpt"
         _save_provider_state(auth_store, "openai-codex", state)
-        _save_auth_store(auth_store)
+        _save_auth_store(auth_store, auth_file)
 
 
 def refresh_codex_oauth_pure(
@@ -3296,11 +3375,10 @@ def refresh_codex_oauth_pure(
 def _refresh_codex_auth_tokens(
     tokens: Dict[str, str],
     timeout_seconds: float,
+    *,
+    auth_file: Optional[Path] = None,
 ) -> Dict[str, str]:
-    """Refresh Codex access token using the refresh token.
-    
-    Saves the new tokens to Hermes auth store automatically.
-    """
+    """Refresh Codex access token and write it back to the source auth store."""
     refreshed = refresh_codex_oauth_pure(
         str(tokens.get("access_token", "") or ""),
         str(tokens.get("refresh_token", "") or ""),
@@ -3310,7 +3388,7 @@ def _refresh_codex_auth_tokens(
     updated_tokens["access_token"] = refreshed["access_token"]
     updated_tokens["refresh_token"] = refreshed["refresh_token"]
 
-    _save_codex_tokens(updated_tokens)
+    _save_codex_tokens(updated_tokens, auth_file=auth_file)
     return updated_tokens
 
 
@@ -3364,9 +3442,14 @@ def resolve_codex_runtime_credentials(
     if (not should_refresh) and refresh_if_expiring:
         should_refresh = _codex_access_token_is_expiring(access_token, refresh_skew_seconds)
     if should_refresh:
-        # Re-read under lock to avoid racing with other Hermes processes
-        with _auth_store_lock(timeout_seconds=max(float(AUTH_LOCK_TIMEOUT_SECONDS), refresh_timeout_seconds + 5.0)):
-            data = _read_codex_tokens(_lock=False)
+        source_auth_file = Path(str(data["auth_file"])) if data.get("auth_file") else None
+        # Re-read under the source auth-store lock to avoid racing with other
+        # Hermes processes. If profile-mode fallback supplied global Codex
+        # tokens, lock and write back to that global source file; do not copy
+        # refreshed OAuth material into the profile-local auth store.
+        lock_timeout = max(float(AUTH_LOCK_TIMEOUT_SECONDS), refresh_timeout_seconds + 5.0)
+        with _codex_source_auth_lock(source_auth_file, timeout_seconds=lock_timeout):
+            data = _read_codex_tokens(_lock=False, auth_file=source_auth_file)
             tokens = dict(data["tokens"])
             access_token = str(tokens.get("access_token", "") or "").strip()
 
@@ -3375,7 +3458,11 @@ def resolve_codex_runtime_credentials(
                 should_refresh = _codex_access_token_is_expiring(access_token, refresh_skew_seconds)
 
             if should_refresh:
-                tokens = _refresh_codex_auth_tokens(tokens, refresh_timeout_seconds)
+                tokens = _refresh_codex_auth_tokens(
+                    tokens,
+                    refresh_timeout_seconds,
+                    auth_file=source_auth_file,
+                )
                 access_token = str(tokens.get("access_token", "") or "").strip()
 
     base_url = (
@@ -3387,7 +3474,7 @@ def resolve_codex_runtime_credentials(
         "provider": "openai-codex",
         "base_url": base_url,
         "api_key": access_token,
-        "source": "hermes-auth-store",
+        "source": str(data.get("source") or "hermes-auth-store"),
         "last_refresh": data.get("last_refresh"),
         "auth_mode": "chatgpt",
     }

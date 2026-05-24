@@ -1882,6 +1882,61 @@ class TestSharedBoardPaths:
         assert env["HERMES_KANBAN_TASK"] == "t_dispatch_env"
         assert env["HERMES_KANBAN_BRANCH"] == "wt/t_dispatch_env"
 
+    def test_dispatcher_spawn_overwrites_stale_acpx_guard_env_from_profile_home(
+        self, tmp_path, monkeypatch
+    ):
+        default_home = tmp_path / ".hermes"
+        default_home.mkdir()
+        profile_unix_home = default_home / "profiles" / "mcbackend" / "home"
+        profile_unix_home.mkdir(parents=True)
+        self._set_home(monkeypatch, tmp_path, default_home)
+        monkeypatch.setenv("HOME", str(profile_unix_home))
+        monkeypatch.setenv("ACPX_GUARD_REAL_HOME", str(profile_unix_home))
+        monkeypatch.setenv("ACPX_GUARD_HOME", str(profile_unix_home / ".hermes" / "acpx"))
+        monkeypatch.setenv("ACPX_GUARD_LOG_DIR", str(profile_unix_home / ".hermes" / "logs" / "acpx"))
+        monkeypatch.setenv("ACPX_GUARD_USAGE_HOME", str(profile_unix_home))
+        monkeypatch.setenv("ACPX_GUARD_AGENT_HOME", str(profile_unix_home))
+        monkeypatch.setenv("ACPX_GUARD_BWS_WRAPPER", str(profile_unix_home / "stale-wrapper.py"))
+
+        captured = {}
+
+        class _FakePopen:
+            def __init__(self, cmd, **kwargs):
+                captured["env"] = kwargs.get("env", {})
+                self.pid = 4242
+
+        monkeypatch.setattr("subprocess.Popen", _FakePopen)
+        task = kb.Task(
+            id="t_acpx_env",
+            title="x",
+            body=None,
+            assignee="coder",
+            status="ready",
+            priority=0,
+            created_by=None,
+            created_at=0,
+            started_at=None,
+            completed_at=None,
+            workspace_kind="worktree",
+            workspace_path=str(tmp_path / "ws"),
+            claim_lock=None,
+            claim_expires=None,
+            tenant=None,
+            branch_name=None,
+        )
+
+        kb._default_spawn(task, str(tmp_path / "ws"))
+
+        env = captured["env"]
+        assert env["ACPX_GUARD_REAL_HOME"] == str(tmp_path)
+        assert env["ACPX_GUARD_HOME"] == str(default_home / "acpx")
+        assert env["ACPX_GUARD_LOG_DIR"] == str(default_home / "logs" / "acpx")
+        assert env["ACPX_GUARD_USAGE_HOME"] == str(tmp_path)
+        assert env["ACPX_GUARD_AGENT_HOME"] == str(tmp_path)
+        assert env["ACPX_GUARD_BWS_WRAPPER"] == str(
+            default_home / "profiles" / "mister" / "scripts" / "bws-scope-env.py"
+        )
+
 
 # ---------------------------------------------------------------------------
 # latest_summary / latest_summaries — surface task_runs.summary handoffs

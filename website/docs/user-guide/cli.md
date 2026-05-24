@@ -415,6 +415,8 @@ When a background task finishes, the result appears as a panel in your terminal:
 ╰──────────────────────────────────────────────────────────────╯
 ```
 
+The CLI background panel is text-only. If a background agent returns a local attachment directive such as `MEDIA:/path/to/file.png`, the CLI renders it literally in the panel; it does not upload or deliver native attachments. Messaging gateways handle background-result attachments separately after validation. In this checkout, empty/placeholder directives and ordinary prose that mentions `MEDIA:` are not normalized consistently across gateway base/background and streaming delivery; the accepted MEDIA hardening that strips empty/extensionless local placeholders while preserving prose such as `MEDIA: files` is pending until that implementation branch is paired here.
+
 If the task fails, you'll see an error notification instead. If `display.bell_on_complete` is enabled in your config, the terminal bell rings when the task finishes.
 
 ### Use Cases

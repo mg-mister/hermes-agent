@@ -191,6 +191,25 @@ Outgoing deliveries (`gateway/delivery.py`) handle:
 
 Cron job deliveries are NOT mirrored into gateway session history — they live in their own cron session only. This is a deliberate design choice to avoid message alternation violations.
 
+### Native attachment directives
+
+The gateway treats `MEDIA:<local-path>` as internal control syntax for native file delivery, not as user-visible prose. The shared logic lives in `gateway/platforms/base.py`:
+
+1. `BasePlatformAdapter.extract_media()` extracts local `MEDIA:` directives from assistant text and returns `(path, is_voice)` tuples plus cleaned display text.
+2. `BasePlatformAdapter.filter_media_delivery_paths()` validates extracted files before any platform adapter calls `send_document`, `send_image`, `send_video`, or `send_voice`.
+3. `GatewayStreamConsumer._clean_for_display()` hides media directives from streaming text; after the stream finishes, `GatewayRunner._deliver_media_from_response()` performs the actual attachment delivery.
+4. `/background` uses the same extraction and filtering before sending its final result back to the originating chat.
+
+Validation is intentionally deny-by-default. A path must be absolute after expansion, resolve to an existing regular file, and sit under one of the Hermes-managed media cache directories. Operators can add extra trusted roots with `HERMES_MEDIA_ALLOW_DIRS`; values may be separated by `os.pathsep` (`:` on Unix, `;` on Windows) or commas. Symlinks are resolved before containment checks, so a symlink inside an allowed root cannot point outside it.
+
+Current branch behavior is not yet identical across every delivery path. Extracted local file directives that look like `MEDIA:/path/file.png` are removed from visible text, then rejected unless the resolved file exists under an allowed media root. Empty tags and extensionless placeholder examples such as `MEDIA:` and `MEDIA:/absolute/path` are not extracted by the base adapter in this checkout, so they can remain visible in non-streaming/background text; the streaming cleaner hides path-like placeholders but currently also strips ordinary prose such as `MEDIA: files`. A reviewed remediation exists to preserve ordinary `MEDIA:` prose while stripping empty/extensionless local placeholders, but these docs must not describe that behavior as current until the implementation/test branch is paired here.
+
+Operational breadcrumbs to search for in `~/.hermes/logs/gateway.log` or the service journal:
+
+- `Skipping unsafe MEDIA directive path outside allowed roots` — an extracted local file directive failed the delivery allowlist, for example because the file is missing or outside the configured media roots.
+- `Post-stream media delivery failed` / `Post-stream file delivery failed` — extraction succeeded, but the platform adapter rejected the send.
+- `Background task ... failed` — the background agent failed before normal result delivery.
+
 ## Hooks
 
 Gateway hooks are Python modules that respond to lifecycle events:

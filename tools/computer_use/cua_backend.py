@@ -4,7 +4,7 @@ Speaks MCP over stdio to `cua-driver`. The Python `mcp` SDK is async, so we
 run a dedicated asyncio event loop on a background thread and marshal sync
 calls through it.
 
-Install: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"`
+Install: download the installer first, then execute the local temp file: `tmp="$(mktemp)" && trap 'rm -f "$tmp"' EXIT && curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh -o "$tmp" && bash "$tmp"`
 
 After install, `cua-driver` is on $PATH and supports `cua-driver mcp` (stdio
 transport) which is what we invoke.
@@ -95,8 +95,9 @@ def cua_driver_install_hint() -> str:
         "cua-driver is not installed. Install with one of:\n"
         "  hermes computer-use install\n"
         "Or run the upstream installer directly:\n"
-        '  /bin/bash -c "$(curl -fsSL '
-        'https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"\n'
+        "  tmp=\"$(mktemp)\" && trap 'rm -f \"$tmp\"' EXIT && curl -fsSL "
+        "https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh "
+        "-o \"$tmp\" && bash \"$tmp\"\n"
         "Or run `hermes tools` and enable the Computer Use toolset to install it automatically."
     )
 

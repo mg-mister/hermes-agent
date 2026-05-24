@@ -5,7 +5,8 @@ nutrition_search.py — Search USDA FoodData Central for nutrition info.
 Usage:
   python3 nutrition_search.py "chicken breast"
   python3 nutrition_search.py "rice" "eggs" "broccoli"
-  echo -e "oats\\nbanana\\nwhey protein" | python3 nutrition_search.py -
+  printf '%s\n' oats banana 'whey protein' > /tmp/foods.txt
+  python3 nutrition_search.py - < /tmp/foods.txt
 
 Reads USDA_API_KEY from environment, falls back to DEMO_KEY.
 No external dependencies.

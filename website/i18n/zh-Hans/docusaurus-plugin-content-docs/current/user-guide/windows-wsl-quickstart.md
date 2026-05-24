@@ -27,7 +27,7 @@ sidebar_position: 2
 在 **WSL 的 Bash** 中执行（勿混用 Windows 路径）：
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+tmp="$(mktemp)" && curl -LsSf https://astral.sh/uv/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 将 `uv` 加入当前 shell 的 `PATH`（安装脚本结尾会提示），然后：

@@ -7587,7 +7587,7 @@ Install `ollama` if you haven't already! To run more variants of the model, [see
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 {% endstep %}
@@ -7840,7 +7840,7 @@ IBM recommends these settings:
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload! You can change the model name '`granite-4.0-h-small-GGUF`' to any Granite model like 'granite-4.0-h-micro:Q8\_K\_XL'.
@@ -8059,7 +8059,7 @@ Install `ollama` if you haven't already! To run more variants of the model, [see
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 {% endstep %}
@@ -8382,7 +8382,7 @@ Follow the [**best practices above**](#recommended-settings). They're the same a
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -8705,7 +8705,7 @@ Remember,  you can change the model name 'gemma-3-27b-it-GGUF' to any Gemma mode
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload! You can change the model name 'gemma-3-27b-it-GGUF' to any Gemma model like 'gemma-3-270m-it-GGUF:Q8\_K\_XL'.
@@ -8926,7 +8926,7 @@ ollama run hf.co/unsloth/gemma-3n-E4B-it-GGUF:UD-Q4_K_XL
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -9274,7 +9274,7 @@ This mode will provide final responses directly — no `<think>` blocks, no chai
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -9554,7 +9554,7 @@ To achieve optimal performance, Qwen recommends the following settings:
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -9622,7 +9622,7 @@ To achieve optimal performance, Qwen recommends the following settings:
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -10009,7 +10009,7 @@ We've also uploaded versions in [BF16 format](https://huggingface.co/unsloth/Dee
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -10309,7 +10309,7 @@ prompt_8 = "Exactly how many days ago did the French Revolution start? Today is 
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model with our dynamic quant. We did not set the context length automatically, so it will just use Ollama's default set context length.\
@@ -12253,7 +12253,7 @@ Our dynamic uploads have the '`UD`' prefix in them. Those without are not dynami
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model with our dynamic quant. Note you can call `ollama serve &`in another terminal if it fails! We include all suggested parameters (temperature etc) in `params` in our Hugging Face upload!
@@ -13655,7 +13655,7 @@ Utilizing our swapped sampling ordering can also help if you decide to use `dry 
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run run the model! Note you can call `ollama serve`in another terminal if it fails! We include all our fixes and suggested parameters (temperature, min\_p etc) in `param` in our Hugging Face upload!
@@ -14272,7 +14272,7 @@ Yes, the chat template/prompt format is this long!
 ```bash
 apt-get update
 apt-get install pciutils -y
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 2. Run the model! Note you can call `ollama serve`in another terminal if it fails. We include all our fixes and suggested parameters (temperature etc) in `params` in our Hugging Face upload.
@@ -15726,7 +15726,7 @@ The installation order is important, since we want the overwrite bundled depende
    Install `uv`
 
    ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh && source $HOME/.local/bin/env
+   tmp="$(mktemp)" && curl -LsSf https://astral.sh/uv/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp" && source $HOME/.local/bin/env
    ```
 
    Create a project dir and venv:

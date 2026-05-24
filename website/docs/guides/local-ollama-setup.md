@@ -42,7 +42,7 @@ HERMES_API_TIMEOUT=1800   # 30 minutes — generous for slow local models
 ## Step 1: Install Ollama
 
 ```bash
-curl -fsSL https://ollama.com/install.sh | sh
+tmp="$(mktemp)" && curl -fsSL https://ollama.com/install.sh -o "$tmp" && sh "$tmp" && rm -f "$tmp"
 ```
 
 Verify it's running:
