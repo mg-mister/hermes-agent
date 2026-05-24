@@ -1100,6 +1100,48 @@ def test_dispatch_spawn_failure_releases_claim(kanban_home, all_assignees_spawna
         assert kb.get_task(conn, t).claim_lock is None
 
 
+def test_dispatch_blocks_missing_forced_skill_before_spawn(
+    kanban_home, all_assignees_spawnable
+):
+    """Unavailable task.skills must block at dispatcher preflight, not crash child CLI."""
+    skill_dir = kanban_home / "skills" / "present-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: present-skill\ndescription: present\n---\n# Present\n",
+        encoding="utf-8",
+    )
+    spawned = []
+
+    def capture_spawn(task, workspace):
+        spawned.append(task.id)
+        return 4242
+
+    with kb.connect() as conn:
+        t = kb.create_task(
+            conn,
+            title="needs missing skill",
+            assignee="alice",
+            skills=["present-skill", "missing-skill"],
+        )
+        res = kb.dispatch_once(conn, spawn_fn=capture_spawn)
+        task = kb.get_task(conn, t)
+        assert task is not None
+        runs = conn.execute(
+            "SELECT status, outcome, summary FROM task_runs "
+            "WHERE task_id = ? ORDER BY id",
+            (t,),
+        ).fetchall()
+
+    assert spawned == []
+    assert res.spawned == []
+    assert task.status == "blocked"
+    assert task.claim_lock is None
+    assert runs[-1]["status"] == "blocked"
+    assert runs[-1]["outcome"] == "blocked"
+    assert "forced skill preflight failed" in runs[-1]["summary"]
+    assert "missing-skill" in runs[-1]["summary"]
+
+
 def test_dispatch_max_spawn_counts_existing_running_tasks(
     kanban_home, all_assignees_spawnable
 ):
@@ -1889,8 +1931,12 @@ class TestSharedBoardPaths:
         default_home.mkdir()
         profile_unix_home = default_home / "profiles" / "mcbackend" / "home"
         profile_unix_home.mkdir(parents=True)
+        control_wrapper = default_home / "profiles" / "control" / "scripts" / "bws-scope-env.py"
+        control_wrapper.parent.mkdir(parents=True)
+        control_wrapper.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
         self._set_home(monkeypatch, tmp_path, default_home)
         monkeypatch.setenv("HOME", str(profile_unix_home))
+        monkeypatch.setenv("HERMES_ACPX_BWS_PROFILE", "control")
         monkeypatch.setenv("ACPX_GUARD_REAL_HOME", str(profile_unix_home))
         monkeypatch.setenv("ACPX_GUARD_HOME", str(profile_unix_home / ".hermes" / "acpx"))
         monkeypatch.setenv("ACPX_GUARD_LOG_DIR", str(profile_unix_home / ".hermes" / "logs" / "acpx"))
@@ -1933,9 +1979,24 @@ class TestSharedBoardPaths:
         assert env["ACPX_GUARD_LOG_DIR"] == str(default_home / "logs" / "acpx")
         assert env["ACPX_GUARD_USAGE_HOME"] == str(tmp_path)
         assert env["ACPX_GUARD_AGENT_HOME"] == str(tmp_path)
-        assert env["ACPX_GUARD_BWS_WRAPPER"] == str(
-            default_home / "profiles" / "mister" / "scripts" / "bws-scope-env.py"
-        )
+        assert env["ACPX_GUARD_BWS_WRAPPER"] == str(control_wrapper)
+
+    def test_dispatcher_spawn_drops_stale_acpx_bws_wrapper_when_no_safe_wrapper(
+        self, tmp_path, monkeypatch
+    ):
+        default_home = tmp_path / ".hermes"
+        default_home.mkdir()
+        profile_unix_home = default_home / "profiles" / "mcbackend" / "home"
+        profile_unix_home.mkdir(parents=True)
+        self._set_home(monkeypatch, tmp_path, default_home)
+        monkeypatch.setenv("HOME", str(profile_unix_home))
+        monkeypatch.setenv("ACPX_GUARD_BWS_WRAPPER", str(profile_unix_home / "stale-wrapper.py"))
+
+        env = dict(os.environ)
+        kb._inject_acpx_guard_env(env)
+
+        assert env["ACPX_GUARD_REAL_HOME"] == str(tmp_path)
+        assert "ACPX_GUARD_BWS_WRAPPER" not in env
 
 
 # ---------------------------------------------------------------------------

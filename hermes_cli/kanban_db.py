@@ -5165,6 +5165,25 @@ def dispatch_once(
                         {"reason": guard_reason},
                     )
             continue
+        task_for_preflight = get_task(conn, row["id"])
+        forced_skills = list(task_for_preflight.skills or []) if task_for_preflight else []
+        if forced_skills:
+            worker_home = _worker_profile_hermes_home(row["assignee"])
+            missing_skills = [
+                sk for sk in forced_skills
+                if sk and not _worker_skill_available(worker_home, str(sk))
+            ]
+            if missing_skills:
+                reason = (
+                    "forced skill preflight failed: assignee "
+                    f"{row['assignee']} cannot load required task skill(s): "
+                    f"{', '.join(sorted(set(map(str, missing_skills))))}. "
+                    "Install/sync the skill into that profile or remove/replace "
+                    "the forced skill; worker not spawned."
+                )
+                if not dry_run and block_task(conn, row["id"], reason=reason):
+                    result.auto_blocked.append(row["id"])
+                continue
         if dry_run:
             result.spawned.append((row["id"], row["assignee"], ""))
             continue
@@ -5492,6 +5511,25 @@ def _resolve_hermes_argv() -> list[str]:
     return _module_hermes_argv()
 
 
+def _worker_profile_hermes_home(assignee: Optional[str]) -> Optional[str]:
+    """Return the HERMES_HOME a dispatcher-spawned worker will use.
+
+    Mirrors the profile-home resolution in ``_default_spawn``. In isolated test
+    fixtures a fake profile may be marked spawnable without an on-disk profile;
+    in that case the child would inherit the dispatcher's current HERMES_HOME.
+    """
+    if not assignee:
+        return os.environ.get("HERMES_HOME")
+    try:
+        from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
+
+        return resolve_profile_env(normalize_profile_name(assignee))
+    except FileNotFoundError:
+        return os.environ.get("HERMES_HOME")
+    except Exception:
+        return os.environ.get("HERMES_HOME")
+
+
 def _worker_skill_available(hermes_home: Optional[str], skill_name: str) -> bool:
     """True if ``skill_name`` resolves for the home the worker will run under.
 
@@ -5577,6 +5615,50 @@ def _canonical_acpx_guard_real_home(home: Optional[str]) -> Path:
     return home_path
 
 
+def _safe_profile_name(raw: str) -> Optional[str]:
+    """Return a profile name safe to interpolate into ``profiles/<name>``."""
+    name = raw.strip()
+    if not name or "/" in name or "\\" in name or name in {".", ".."}:
+        return None
+    if ".." in Path(name).parts:
+        return None
+    return name
+
+
+def _resolve_acpx_guard_bws_wrapper(env: dict[str, str], hermes_root: Path) -> Optional[Path]:
+    """Resolve the BWS scope wrapper without baking in a local profile name.
+
+    The dispatcher may inherit a stale wrapper path from a worker profile home;
+    do not blindly trust it. Prefer explicit existing paths, then a configured
+    control profile, then the active dispatcher profile, and finally a unique
+    wrapper installed under ``<root>/profiles/*/scripts``.
+    """
+    explicit = env.get("ACPX_GUARD_BWS_WRAPPER", "").strip()
+    if explicit:
+        explicit_path = Path(explicit).expanduser()
+        if explicit_path.exists():
+            return explicit_path
+
+    seen: set[str] = set()
+    for key in ("ACPX_GUARD_BWS_PROFILE", "HERMES_ACPX_BWS_PROFILE", "HERMES_PROFILE"):
+        profile = _safe_profile_name(env.get(key, ""))
+        if not profile or profile in seen:
+            continue
+        seen.add(profile)
+        candidate = hermes_root / "profiles" / profile / "scripts" / "bws-scope-env.py"
+        if candidate.exists():
+            return candidate
+
+    profiles_root = hermes_root / "profiles"
+    try:
+        candidates = sorted(profiles_root.glob("*/scripts/bws-scope-env.py"))
+    except OSError:
+        candidates = []
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def _inject_acpx_guard_env(env: dict[str, str]) -> None:
     """Canonicalize ACPX guard paths for profile-home worker execution.
 
@@ -5593,9 +5675,11 @@ def _inject_acpx_guard_env(env: dict[str, str]) -> None:
     env["ACPX_GUARD_LOG_DIR"] = str(hermes_root / "logs" / "acpx")
     env["ACPX_GUARD_USAGE_HOME"] = str(real_home)
     env["ACPX_GUARD_AGENT_HOME"] = str(real_home)
-    env["ACPX_GUARD_BWS_WRAPPER"] = str(
-        hermes_root / "profiles" / "mister" / "scripts" / "bws-scope-env.py"
-    )
+    bws_wrapper = _resolve_acpx_guard_bws_wrapper(env, hermes_root)
+    if bws_wrapper is not None:
+        env["ACPX_GUARD_BWS_WRAPPER"] = str(bws_wrapper)
+    else:
+        env.pop("ACPX_GUARD_BWS_WRAPPER", None)
 
 
 def _default_spawn(
