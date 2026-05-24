@@ -2692,19 +2692,23 @@ def test_build_worker_context_caps_huge_summary(kanban_home):
         conn.close()
 
 
-def test_default_spawn_auto_loads_kanban_worker_skill(kanban_home, monkeypatch):
-    """The dispatcher's _default_spawn must include --skills kanban-worker
-    in its argv so every worker loads the skill automatically, even if
-    the profile hasn't wired it into its default skills config.
+def test_default_spawn_auto_loads_builtin_worker_skills(kanban_home, monkeypatch):
+    """The dispatcher's _default_spawn must include built-in worker skills
+    in its argv so every worker loads the Kanban lifecycle guidance plus
+    Mister's programming-agent routing policy automatically, even if the
+    profile hasn't wired them into its default skills config.
 
     We intercept Popen to capture the argv without actually spawning a
     hermes subprocess (which would hang trying to call an LLM).
     """
-    # Pretend the bundled kanban-worker skill resolves for this isolated
-    # HERMES_HOME — the fixture creates an empty tmpdir without the
-    # devops/kanban-worker tree, and _default_spawn gates the --skills
-    # flag on actual resolvability.
-    monkeypatch.setattr(kb, "_kanban_worker_skill_available", lambda _h: True)
+    # Pretend the built-in worker skills resolve for this isolated HERMES_HOME:
+    # the fixture creates an empty tmpdir without the profile skill trees, and
+    # _default_spawn gates each --skills flag on actual resolvability.
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _h, skill_name: skill_name in {"kanban-worker", "mister-programming-agents"},
+    )
 
     captured = {}
 
@@ -2732,10 +2736,12 @@ def test_default_spawn_auto_loads_kanban_worker_skill(kanban_home, monkeypatch):
 
     cmd = captured["cmd"]
     assert "--skills" in cmd, f"spawn argv missing --skills: {cmd}"
-    idx = cmd.index("--skills")
-    assert cmd[idx + 1] == "kanban-worker", (
-        f"expected 'kanban-worker', got {cmd[idx + 1]!r}"
-    )
+    skill_names = [
+        cmd[i + 1]
+        for i, tok in enumerate(cmd)
+        if tok == "--skills" and i + 1 < len(cmd)
+    ]
+    assert skill_names[:2] == ["kanban-worker", "mister-programming-agents"], skill_names
     assert "--accept-hooks" in cmd, f"spawn argv missing --accept-hooks: {cmd}"
     assert cmd.index("--accept-hooks") < cmd.index("chat"), (
         f"--accept-hooks must come before 'chat' in argv: {cmd}"
@@ -2974,8 +2980,12 @@ def test_create_task_skills_lists_all_toolset_typos(kanban_home):
 
 def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     """Dispatcher argv must carry one `--skills X` pair per task skill,
-    in addition to the built-in kanban-worker."""
-    monkeypatch.setattr(kb, "_kanban_worker_skill_available", lambda _h: True)
+    in addition to the built-in worker skills."""
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _h, skill_name: skill_name in {"kanban-worker", "mister-programming-agents"},
+    )
     captured = {}
 
     class FakeProc:
@@ -3008,8 +3018,8 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     for i, tok in enumerate(cmd):
         if tok == "--skills" and i + 1 < len(cmd):
             skill_names.append(cmd[i + 1])
-    # kanban-worker first (built-in), then per-task extras in order.
-    assert skill_names[0] == "kanban-worker", skill_names
+    # Built-in skills first, then per-task extras in order.
+    assert skill_names[:2] == ["kanban-worker", "mister-programming-agents"], skill_names
     assert "translation" in skill_names
     assert "github-code-review" in skill_names
     # --skills must appear BEFORE the `chat` subcommand so argparse
@@ -3023,9 +3033,13 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     )
 
 
-def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monkeypatch):
-    """If a task explicitly lists 'kanban-worker', we don't double-pass it."""
-    monkeypatch.setattr(kb, "_kanban_worker_skill_available", lambda _h: True)
+def test_default_spawn_dedupes_builtin_skills_from_task_skills(kanban_home, monkeypatch):
+    """If a task explicitly lists built-in skills, we don't double-pass them."""
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _h, skill_name: skill_name in {"kanban-worker", "mister-programming-agents"},
+    )
     captured = {}
 
     class FakeProc:
@@ -3041,7 +3055,7 @@ def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monke
     try:
         tid = kb.create_task(
             conn, title="dup", assignee="x",
-            skills=["kanban-worker", "translation"],
+            skills=["kanban-worker", "mister-programming-agents", "translation"],
         )
         task = kb.get_task(conn, tid)
         workspace = kb.resolve_workspace(task)
@@ -3056,6 +3070,13 @@ def test_default_spawn_dedupes_kanban_worker_from_task_skills(kanban_home, monke
     ]
     assert len(worker_pairs) == 1, (
         f"kanban-worker appeared {len(worker_pairs)} times in argv: {cmd}"
+    )
+    routing_pairs = [
+        i for i, tok in enumerate(cmd)
+        if tok == "--skills" and i + 1 < len(cmd) and cmd[i + 1] == "mister-programming-agents"
+    ]
+    assert len(routing_pairs) == 1, (
+        f"mister-programming-agents appeared {len(routing_pairs)} times in argv: {cmd}"
     )
 
 
