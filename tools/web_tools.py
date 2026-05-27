@@ -849,6 +849,121 @@ def web_search_tool(query: str, limit: int = 5) -> str:
         return tool_error(error_msg)
 
 
+class _SimpleHTMLTextExtractor:
+    """Tiny stdlib HTML-to-text fallback for profiles without extract backends."""
+
+    def __init__(self) -> None:
+        from html.parser import HTMLParser
+
+        class Parser(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__(convert_charrefs=True)
+                self.parts: list[str] = []
+                self.title_parts: list[str] = []
+                self._in_title = False
+                self._skip_depth = 0
+
+            def handle_starttag(self, tag, attrs):  # noqa: ANN001
+                tag = (tag or "").lower()
+                if tag in {"script", "style", "noscript"}:
+                    self._skip_depth += 1
+                elif tag == "title":
+                    self._in_title = True
+                elif tag in {"p", "br", "div", "section", "article", "li", "h1", "h2", "h3", "h4", "h5", "h6"}:
+                    self.parts.append("\n")
+
+            def handle_endtag(self, tag):  # noqa: ANN001
+                tag = (tag or "").lower()
+                if tag in {"script", "style", "noscript"} and self._skip_depth:
+                    self._skip_depth -= 1
+                elif tag == "title":
+                    self._in_title = False
+                elif tag in {"p", "div", "section", "article", "li"}:
+                    self.parts.append("\n")
+
+            def handle_data(self, data):  # noqa: ANN001
+                if not data:
+                    return
+                if self._in_title:
+                    self.title_parts.append(data)
+                if self._skip_depth or self._in_title:
+                    return
+                self.parts.append(data)
+
+        self.parser = Parser()
+
+    def feed(self, text: str) -> None:
+        self.parser.feed(text)
+
+    @property
+    def title(self) -> str:
+        return re.sub(r"\s+", " ", " ".join(self.parser.title_parts)).strip()
+
+    @property
+    def text(self) -> str:
+        return re.sub(r"\n\s*\n+", "\n\n", re.sub(r"[ \t]+", " ", "".join(self.parser.parts))).strip()
+
+
+async def _direct_http_extract_fallback(urls: List[str], *, format: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Conservative direct HTTP extractor used when only search-only backends exist.
+
+    This is intentionally small and dependency-free: it keeps web_extract useful
+    for pages that can be fetched directly, while preserving SSRF checks on the
+    original URL and on every redirect target.
+    """
+
+    async def _ssrf_redirect_guard(response: httpx.Response) -> None:
+        if response.is_redirect and response.next_request:
+            redirect_url = str(response.next_request.url)
+            if not is_safe_url(redirect_url):
+                raise PermissionError("Blocked: redirect targets a private or internal network address")
+
+    headers = {
+        "User-Agent": "HermesAgent/1.0 (+https://hermes-agent.nousresearch.com)",
+        "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+    }
+    results: List[Dict[str, Any]] = []
+    async with httpx.AsyncClient(
+        timeout=20.0,
+        follow_redirects=True,
+        headers=headers,
+        event_hooks={"response": [_ssrf_redirect_guard]},
+    ) as client:
+        for url in urls:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").lower()
+                text = response.text
+                title = ""
+                if "html" in content_type or "xml" in content_type or "<html" in text[:500].lower():
+                    extractor = _SimpleHTMLTextExtractor()
+                    extractor.feed(text[:2_000_000])
+                    title = extractor.title
+                    content = extractor.text
+                    raw_content = text if format == "html" else content
+                else:
+                    content = text.strip()
+                    raw_content = content
+                results.append({
+                    "url": str(response.url),
+                    "title": title,
+                    "content": content,
+                    "raw_content": raw_content,
+                    "metadata": {"source": "direct-http-fallback"},
+                })
+            except Exception as exc:  # noqa: BLE001 - per-URL failure envelope
+                results.append({
+                    "url": url,
+                    "title": "",
+                    "content": "",
+                    "raw_content": "",
+                    "error": str(exc),
+                    "metadata": {"source": "direct-http-fallback"},
+                })
+    return results
+
+
 async def web_extract_tool(
     urls: List[str],
     format: str = None,
@@ -941,55 +1056,59 @@ async def web_extract_tool(
             )
 
             provider = _wsp_get_provider(backend) if backend else None
+            use_direct_fallback = False
             if provider is None or not provider.supports_extract():
-                # When the configured name IS registered but doesn't support
-                # extract (search-only providers like brave-free / ddgs /
-                # searxng), surface that as a typed "search-only" error
-                # rather than silently switching backends. When the name
-                # isn't registered at all (typo / uninstalled plugin), fall
-                # through to the active-provider walk.
+                # When web.extract_backend is explicitly configured to a
+                # search-only backend, keep the precise error instead of
+                # silently switching semantics.  If the search-only backend was
+                # only selected by auto-detection (or by web.search_backend for
+                # search), fall back to conservative direct HTTP extraction so
+                # web_extract remains usable on free/search-only profiles.
+                cfg = _load_web_config()
+                explicit_extract = (cfg.get("extract_backend") or "").strip().lower()
+                explicit_shared = (cfg.get("backend") or "").strip().lower()
                 if provider is not None and not provider.supports_extract():
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": (
-                                f"{provider.display_name} is a search-only "
-                                "backend and cannot extract URL content. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
-                            ),
-                        },
-                        ensure_ascii=False,
-                    )
-                provider = get_active_extract_provider()
-                if provider is None:
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": (
-                                "No web extract provider configured. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
-                            ),
-                        },
-                        ensure_ascii=False,
-                    )
+                    if explicit_extract == provider.name or explicit_shared == provider.name:
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "error": (
+                                    f"{provider.display_name} is a search-only "
+                                    "backend and cannot extract URL content. "
+                                    "Set web.extract_backend to firecrawl, "
+                                    "tavily, exa, or parallel."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+                    use_direct_fallback = True
+                if not use_direct_fallback:
+                    provider = get_active_extract_provider()
+                    if provider is None:
+                        use_direct_fallback = True
 
-            logger.info(
-                "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
-            )
-
-            # Async-or-sync dispatch: parallel + firecrawl have async
-            # extract(); exa + tavily are sync.
-            import inspect
-            if inspect.iscoroutinefunction(provider.extract):
-                results = await provider.extract(safe_urls, format=format)
-            else:
-                # Run sync extract() in a thread so we don't block the
-                # event loop on network I/O.
-                results = await asyncio.to_thread(
-                    provider.extract, safe_urls, format=format
+            if use_direct_fallback:
+                logger.info(
+                    "Web extract via direct HTTP fallback: %d URL(s)", len(safe_urls)
                 )
+                results = await _direct_http_extract_fallback(safe_urls, format=format)
+            else:
+                assert provider is not None
+                logger.info(
+                    "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
+                )
+
+                # Async-or-sync dispatch: parallel + firecrawl have async
+                # extract(); exa + tavily are sync.
+                import inspect
+                if inspect.iscoroutinefunction(provider.extract):
+                    results = await provider.extract(safe_urls, format=format)
+                else:
+                    # Run sync extract() in a thread so we don't block the
+                    # event loop on network I/O.
+                    results = await asyncio.to_thread(
+                        provider.extract, safe_urls, format=format
+                    )
 
         # Merge any SSRF-blocked results back in
         if ssrf_blocked:

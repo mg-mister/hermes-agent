@@ -94,7 +94,7 @@ def test_resolve_codex_runtime_credentials_refreshes_expiring_token(tmp_path, mo
 
     called = {"count": 0}
 
-    def _fake_refresh(tokens, timeout_seconds):
+    def _fake_refresh(tokens, timeout_seconds, **_kwargs):
         called["count"] += 1
         return {"access_token": "access-new", "refresh_token": "refresh-new"}
 
@@ -113,9 +113,9 @@ def test_resolve_codex_runtime_credentials_force_refresh(tmp_path, monkeypatch):
 
     called = {"count": 0}
 
-    def _fake_refresh(tokens, timeout_seconds):
+    def _fake_refresh(tokens, timeout_seconds, **_kwargs):
         called["count"] += 1
-        return {"access_token": "access-forced", "refresh_token": "refresh-new"}
+        return {"access_token": "access-forced", "refresh_token": "refresh-forced"}
 
     monkeypatch.setattr("hermes_cli.auth._refresh_codex_auth_tokens", _fake_refresh)
 

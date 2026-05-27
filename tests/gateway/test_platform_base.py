@@ -27,7 +27,7 @@ class TestSecretCaptureGuidance:
 class TestSafeUrlForLog:
     def test_strips_query_fragment_and_userinfo(self):
         url = (
-            "https://user:pass@example.com/private/path/image.png"
+            "https://user:***@example.com/private/path/image.png"
             "?X-Amz-Signature=supersecret&token=abc#frag"
         )
         result = safe_url_for_log(url)
@@ -43,7 +43,7 @@ class TestSafeUrlForLog:
         assert result.endswith("...")
 
     def test_handles_small_and_non_positive_max_len(self):
-        url = "https://example.com/very/long/path/file.png?token=secret"
+        url = "https://example.com/very/long/path/file.png?token=***"
         assert safe_url_for_log(url, max_len=3) == "..."
         assert safe_url_for_log(url, max_len=2) == ".."
         assert safe_url_for_log(url, max_len=0) == ""
@@ -360,6 +360,90 @@ class TestExtractMedia:
         # Both directives stripped from cleaned text
         assert "[[audio_as_voice]]" not in cleaned
         assert "[[as_document]]" not in cleaned
+
+
+    def test_validated_media_strips_nonexistent_path_without_returning_media(self, tmp_path):
+        missing = tmp_path / "missing.ogg"
+
+        media, cleaned = BasePlatformAdapter.extract_media(
+            f"Before\nMEDIA:{missing}\nAfter",
+            validate_paths=True,
+        )
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert str(missing) not in cleaned
+        assert "Before" in cleaned
+        assert "After" in cleaned
+
+    def test_validated_media_returns_existing_safe_path(self, tmp_path, monkeypatch):
+        root = tmp_path / "media-cache"
+        media_file = root / "voice.ogg"
+        media_file.parent.mkdir(parents=True)
+        media_file.write_bytes(b"OggS")
+        monkeypatch.setattr(
+            "gateway.platforms.base.MEDIA_DELIVERY_SAFE_ROOTS",
+            (root,),
+        )
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "0")
+
+        media, cleaned = BasePlatformAdapter.extract_media(
+            f"MEDIA:{media_file}",
+            validate_paths=True,
+        )
+
+        assert media == [(str(media_file.resolve()), False)]
+        assert cleaned == ""
+
+    def test_validated_media_strips_unsafe_existing_path(self, tmp_path, monkeypatch):
+        root = tmp_path / "media-cache"
+        root.mkdir()
+        unsafe = tmp_path / "outside.ogg"
+        unsafe.write_bytes(b"OggS")
+        monkeypatch.setattr(
+            "gateway.platforms.base.MEDIA_DELIVERY_SAFE_ROOTS",
+            (root,),
+        )
+        monkeypatch.setenv("HERMES_MEDIA_TRUST_RECENT_FILES", "0")
+
+        media, cleaned = BasePlatformAdapter.extract_media(
+            f"Before\nMEDIA:{unsafe}\nAfter",
+            validate_paths=True,
+        )
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert str(unsafe) not in cleaned
+        assert "Before" in cleaned
+        assert "After" in cleaned
+
+    def test_validated_media_strips_placeholder_directive_line(self):
+        media, cleaned = BasePlatformAdapter.extract_media(
+            "Before\nMEDIA:{screenshot_path}\nAfter",
+            validate_paths=True,
+        )
+
+        assert media == []
+        assert "MEDIA:" not in cleaned
+        assert "{screenshot_path}" not in cleaned
+        assert "Before" in cleaned
+        assert "After" in cleaned
+
+    def test_invalid_validated_media_does_not_reach_filter_warning(self, tmp_path, caplog):
+        missing = tmp_path / "missing.ogg"
+
+        media, cleaned = BasePlatformAdapter.extract_media(
+            f"MEDIA:{missing}",
+            validate_paths=True,
+        )
+
+        with caplog.at_level("WARNING", logger="gateway.platforms.base"):
+            filtered = BasePlatformAdapter.filter_media_delivery_paths(media)
+
+        assert media == []
+        assert filtered == []
+        assert "Skipping unsafe MEDIA directive path outside allowed roots" not in caplog.text
+        assert cleaned == ""
 
 
 class TestMediaDeliveryPathValidation:

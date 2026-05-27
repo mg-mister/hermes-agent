@@ -114,7 +114,7 @@ def test_ttfb_includes_silent_hang_hint_for_gpt_5_5(tmp_path, monkeypatch):
     statuses: list[str] = []
     dummy_client = SimpleNamespace()
     monkeypatch.setattr(agent, "_create_request_openai_client", lambda **k: dummy_client)
-    monkeypatch.setattr(agent, "_emit_status", lambda msg: statuses.append(msg))
+    monkeypatch.setattr(agent, "_emit_status", lambda msg, *a, **k: statuses.append(msg))
     monkeypatch.setattr(
         agent, "_abort_request_openai_client",
         lambda c, reason=None: closes.append(reason),
@@ -143,9 +143,50 @@ def test_ttfb_includes_silent_hang_hint_for_gpt_5_5(tmp_path, monkeypatch):
         assert "gpt-5.4-codex" in message
         assert "codex_ttfb_kill" in closes
         assert statuses, "expected a user-facing watchdog status"
-        assert any("gpt-5.4" in s and "gpt-5.3-codex" in s for s in statuses)
+        joined = "\n".join(statuses)
+        assert "No first byte from provider" in joined
+        assert "silently rejecting" in joined
+        assert "gpt-5.4" in joined and "gpt-5.3-codex" in joined
     finally:
         stop["flag"] = True
+
+
+def test_ttfb_status_without_hint_keeps_generic_reconnect(tmp_path, monkeypatch):
+    """Models outside the known silent-hang pattern keep the generic retry
+    status instead of showing the gpt-5.5 workaround."""
+    from agent import chat_completion_helpers as h
+
+    agent = _make_codex_agent(tmp_path, monkeypatch)
+    monkeypatch.setenv("HERMES_CODEX_TTFB_TIMEOUT_SECONDS", "1")
+
+    statuses: list[str] = []
+    dummy_client = SimpleNamespace()
+    monkeypatch.setattr(agent, "_emit_status", lambda msg, *a, **k: statuses.append(msg))
+    monkeypatch.setattr(agent, "_create_request_openai_client", lambda **k: dummy_client)
+    monkeypatch.setattr(agent, "_abort_request_openai_client", lambda c, reason=None: None)
+    monkeypatch.setattr(agent, "_close_request_openai_client", lambda c, reason=None: None)
+
+    stop = {"flag": False}
+
+    def fake_hang(api_kwargs, client=None, on_first_delta=None):
+        deadline = time.time() + 30
+        while time.time() < deadline and not stop["flag"] and not agent._interrupt_requested:
+            time.sleep(0.02)
+        raise RuntimeError("connection closed")
+
+    monkeypatch.setattr(agent, "_run_codex_stream", fake_hang)
+
+    try:
+        with pytest.raises(TimeoutError):
+            h.interruptible_api_call(agent, {"model": "gpt-5.4", "input": "hi"})
+    finally:
+        stop["flag"] = True
+
+    joined = "\n".join(statuses)
+    assert "No first byte from provider" in joined
+    assert "Reconnecting." in joined
+    assert "silently rejecting" not in joined
+
 
 
 def test_ttfb_does_not_kill_when_events_flow(tmp_path, monkeypatch):

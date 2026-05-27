@@ -2354,11 +2354,20 @@ class BasePlatformAdapter(ABC):
         """Drop unsafe MEDIA paths and normalize accepted paths."""
         safe_media: List[Tuple[str, bool]] = []
         for media_path, is_voice in media_files or []:
-            safe_path = validate_media_delivery_path(str(media_path))
+            raw_path = str(media_path)
+            safe_path = validate_media_delivery_path(raw_path)
             if safe_path:
                 safe_media.append((safe_path, bool(is_voice)))
             else:
-                logger.warning("Skipping unsafe MEDIA directive path outside allowed roots")
+                try:
+                    expanded = Path(os.path.expanduser(raw_path))
+                    missing_absolute = expanded.is_absolute() and not expanded.exists()
+                except (OSError, RuntimeError, ValueError):
+                    missing_absolute = False
+                if missing_absolute:
+                    logger.debug("Skipping missing MEDIA directive path")
+                else:
+                    logger.warning("Skipping unsafe MEDIA directive path outside allowed roots")
         return safe_media
 
     @staticmethod
@@ -2374,7 +2383,7 @@ class BasePlatformAdapter(ABC):
         return safe_paths
 
     @staticmethod
-    def extract_media(content: str) -> Tuple[List[Tuple[str, bool]], str]:
+    def extract_media(content: str, *, validate_paths: bool = False) -> Tuple[List[Tuple[str, bool]], str]:
         """
         Extract MEDIA:<path> tags and [[audio_as_voice]] directives from response text.
 
@@ -2421,11 +2430,18 @@ class BasePlatformAdapter(ABC):
                 path = path[1:-1].strip()
             path = path.lstrip("`\"'").rstrip("`\"',.;:)}]")
             if path:
-                media.append((os.path.expanduser(path), has_voice_tag))
+                expanded_path = os.path.expanduser(path)
+                if not validate_paths or validate_media_delivery_path(expanded_path):
+                    media.append((expanded_path, has_voice_tag))
 
-        # Remove MEDIA tags from content (including surrounding quote/backtick wrappers)
+        # Remove MEDIA tags from content (including surrounding quote/backtick wrappers).
+        # In validation mode, strip even rejected/nonexistent paths so stale
+        # placeholders never leak back to chat as raw MEDIA directives.
         if media:
             cleaned = media_pattern.sub('', cleaned)
+            cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+        elif validate_paths and "MEDIA:" in content:
+            cleaned = re.sub(r'''[`"']?MEDIA:\s*[^\n`"']+[`"']?''', '', cleaned)
             cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
         
         return media, cleaned

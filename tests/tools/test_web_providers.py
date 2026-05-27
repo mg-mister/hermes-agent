@@ -312,7 +312,7 @@ class TestUnconfiguredErrorEnvelopeParity:
         # Reset firecrawl client cache so the unconfigured state is re-evaluated
         monkeypatch.setattr(web_tools, "_firecrawl_client", None, raising=False)
         monkeypatch.setattr(web_tools, "_firecrawl_client_config", None, raising=False)
-        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {})
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "firecrawl"})
 
         result = json.loads(web_tools.web_search_tool("hello world", limit=3))
         assert "error" in result, f"expected top-level 'error' key, got {result}"
@@ -335,7 +335,7 @@ class TestUnconfiguredErrorEnvelopeParity:
         self._clear_web_creds(monkeypatch)
         monkeypatch.setattr(web_tools, "_firecrawl_client", None, raising=False)
         monkeypatch.setattr(web_tools, "_firecrawl_client_config", None, raising=False)
-        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {})
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "firecrawl"})
 
         result = json.loads(asyncio.run(web_tools.web_crawl_tool("https://example.com", use_llm_processing=False)))
         assert result.get("success") is False
@@ -343,3 +343,102 @@ class TestUnconfiguredErrorEnvelopeParity:
         assert "web_crawl requires Firecrawl" in result["error"]
         # Crucially: no per-page burying
         assert "results" not in result
+
+
+
+class TestAutoDetectedSearchOnlyExtractFallback:
+    """web_extract should still work when only search-only web backends are available.
+
+    A profile may legitimately set ``web.search_backend: ddgs`` without an
+    extract-capable backend.  That search-only choice must not make
+    ``web_extract`` unusable: in the auto-detected/no-explicit-extract case we
+    fall back to conservative direct HTTP extraction.  Explicitly configuring a
+    search-only extract backend still returns the clear search-only error.
+    """
+
+    _register_providers = staticmethod(register_all_web_providers)
+
+    @pytest.fixture(autouse=True)
+    def _populate_web_registry(self):
+        self._register_providers()
+        yield
+        from agent.web_search_registry import _reset_for_tests
+        _reset_for_tests()
+
+    def _clear_web_creds(self, monkeypatch):
+        for k in (
+            "BRAVE_SEARCH_API_KEY",
+            "SEARXNG_URL",
+            "TAVILY_API_KEY",
+            "EXA_API_KEY",
+            "PARALLEL_API_KEY",
+            "FIRECRAWL_API_KEY",
+            "FIRECRAWL_API_URL",
+            "FIRECRAWL_GATEWAY_URL",
+            "TOOL_GATEWAY_DOMAIN",
+        ):
+            monkeypatch.delenv(k, raising=False)
+
+    def test_search_backend_ddgs_without_extract_backend_uses_direct_fallback(self, monkeypatch):
+        import asyncio
+        import json
+        from tools import web_tools
+
+        self._clear_web_creds(monkeypatch)
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {
+            "backend": "",
+            "search_backend": "ddgs",
+            "extract_backend": "",
+        })
+        monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: True)
+        monkeypatch.setattr(web_tools, "_is_tool_gateway_ready", lambda: False)
+        monkeypatch.setattr(web_tools, "is_safe_url", lambda _url: True)
+
+        called = {}
+
+        async def fake_direct_fallback(urls, *, format=None):
+            called["urls"] = urls
+            called["format"] = format
+            return [{
+                "url": urls[0],
+                "title": "Example Domain",
+                "content": "Example Domain body",
+                "raw_content": "Example Domain body",
+                "metadata": {"source": "direct-http-fallback"},
+            }]
+
+        monkeypatch.setattr(web_tools, "_direct_http_extract_fallback", fake_direct_fallback)
+
+        result = json.loads(asyncio.run(web_tools.web_extract_tool(
+            ["https://example.com"],
+            use_llm_processing=False,
+        )))
+
+        assert called == {"urls": ["https://example.com"], "format": None}
+        assert result["results"][0]["title"] == "Example Domain"
+        assert "search-only" not in json.dumps(result).lower()
+
+    def test_explicit_search_only_extract_backend_still_errors(self, monkeypatch):
+        import asyncio
+        import json
+        from tools import web_tools
+
+        self._clear_web_creds(monkeypatch)
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {
+            "extract_backend": "ddgs",
+        })
+        monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: True)
+        monkeypatch.setattr(web_tools, "is_safe_url", lambda _url: True)
+
+        async def should_not_call(*_args, **_kwargs):
+            raise AssertionError("direct HTTP fallback must not run for explicit extract_backend=ddgs")
+
+        monkeypatch.setattr(web_tools, "_direct_http_extract_fallback", should_not_call)
+
+        result = json.loads(asyncio.run(web_tools.web_extract_tool(
+            ["https://example.com"],
+            use_llm_processing=False,
+        )))
+
+        assert result["success"] is False
+        assert "search-only" in result["error"].lower()

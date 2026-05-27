@@ -2316,6 +2316,9 @@ def _is_connection_error(exc: Exception) -> bool:
         "connection refused", "name or service not known",
         "no route to host", "network is unreachable",
         "timed out", "connection reset",
+        "stream-close", "stream closed", "stream has been closed",
+        "stream has already been consumed", "read or stream content",
+        "transport closed", "connection closed", "server disconnected",
         # httpcore / httpx streaming premature-close errors.  These surface
         # when a proxy or provider drops the connection mid-stream and are
         # transient by nature — the request should be retried or rerouted.
@@ -5036,6 +5039,36 @@ def call_llm(
                     else:
                         raise
 
+        if _is_connection_error(first_err):
+            try:
+                _evict_cached_client_instance(client)
+            except Exception:
+                logger.debug("Auxiliary: cache eviction before same-provider retry failed",
+                             exc_info=True)
+            try:
+                logger.info(
+                    "Auxiliary %s: connection error on %s; rebuilding client and retrying once",
+                    task or "call", resolved_provider,
+                )
+                return _retry_same_provider_sync(
+                    task=task,
+                    resolved_provider=resolved_provider,
+                    resolved_model=resolved_model,
+                    resolved_base_url=resolved_base_url,
+                    resolved_api_key=resolved_api_key,
+                    resolved_api_mode=resolved_api_mode,
+                    main_runtime=main_runtime,
+                    final_model=final_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                    effective_timeout=effective_timeout,
+                    effective_extra_body=effective_extra_body,
+                )
+            except Exception as retry_err:
+                first_err = retry_err
+
         # ── Payment / credit exhaustion fallback ──────────────────────
         # When the resolved provider returns 402 or a credit-related error,
         # try alternative providers instead of giving up.  This handles the
@@ -5425,6 +5458,35 @@ async def async_call_llm(
                         first_err = retry2_err
                     else:
                         raise
+
+        if _is_connection_error(first_err):
+            try:
+                _evict_cached_client_instance(client)
+            except Exception:
+                logger.debug("Auxiliary (async): cache eviction before same-provider retry failed",
+                             exc_info=True)
+            try:
+                logger.info(
+                    "Auxiliary %s (async): connection error on %s; rebuilding client and retrying once",
+                    task or "call", resolved_provider,
+                )
+                return await _retry_same_provider_async(
+                    task=task,
+                    resolved_provider=resolved_provider,
+                    resolved_model=resolved_model,
+                    resolved_base_url=resolved_base_url,
+                    resolved_api_key=resolved_api_key,
+                    resolved_api_mode=resolved_api_mode,
+                    final_model=final_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                    effective_timeout=effective_timeout,
+                    effective_extra_body=effective_extra_body,
+                )
+            except Exception as retry_err:
+                first_err = retry_err
 
         # ── Payment / connection / rate-limit fallback (mirrors sync call_llm) ──
         should_fallback = (

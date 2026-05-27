@@ -11,8 +11,12 @@ authenticated only at the global root.
 
 from __future__ import annotations
 
+import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
@@ -345,7 +349,7 @@ def test_write_credential_pool_targets_profile_not_global(profile_env):
         "auth_type": "api_key",
         "priority": 0,
         "source": "manual",
-        "access_token": "sk-profile-new",
+        "access_token": "***",
     }])
 
     # Global auth.json unchanged.
@@ -358,3 +362,206 @@ def test_write_credential_pool_targets_profile_not_global(profile_env):
 
     # Subsequent read returns profile (shadows global).
     assert [e["id"] for e in read_credential_pool("openrouter")] == ["prof-new"]
+
+
+# ---------------------------------------------------------------------------
+# OpenAI Codex profile workers — global auth broker fallback
+# ---------------------------------------------------------------------------
+
+
+def _codex_state(access_token: str = "access", refresh_token: str = "refresh") -> dict:
+    return {
+        "tokens": {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
+        "auth_mode": "chatgpt",
+        "last_refresh": "2026-01-01T00:00:00Z",
+    }
+
+
+def _jwt_with_exp(exp: int) -> str:
+    def encode(payload: bytes) -> str:
+        return base64.urlsafe_b64encode(payload).rstrip(b"=").decode("ascii")
+
+    return ".".join([
+        encode(b'{"alg":"none"}'),
+        encode(json.dumps({"exp": exp}).encode("utf-8")),
+        "signature",
+    ])
+
+
+def test_codex_runtime_falls_back_to_global_when_profile_has_no_local_state(profile_env):
+    from hermes_cli.auth import resolve_codex_runtime_credentials
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state("global-access", "global-refresh"),
+    }))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={}))
+
+    creds = resolve_codex_runtime_credentials(refresh_if_expiring=False)
+
+    assert creds["api_key"] == "global-access"
+    assert creds["source"] == "hermes-global-auth-store"
+    assert creds["auth_store"] == str(profile_env["global"] / "auth.json")
+
+
+def test_codex_runtime_ignores_stale_profile_state_when_global_is_healthy(profile_env):
+    from hermes_cli.auth import resolve_codex_runtime_credentials
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state("global-access", "global-refresh"),
+    }))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": {
+            "tokens": {"access_token": "", "refresh_token": ""},
+            "last_auth_error": {"code": "refresh_token_reused"},
+        },
+    }))
+
+    creds = resolve_codex_runtime_credentials(refresh_if_expiring=False)
+
+    assert creds["api_key"] == "global-access"
+    assert creds["source"] == "hermes-global-auth-store"
+
+
+def test_codex_runtime_prefers_global_even_when_profile_has_local_state(profile_env):
+    from hermes_cli.auth import resolve_codex_runtime_credentials
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state("global-access", "global-refresh"),
+    }))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state("profile-local-access", "profile-local-refresh"),
+    }))
+
+    creds = resolve_codex_runtime_credentials(refresh_if_expiring=False)
+
+    assert creds["api_key"] == "global-access"
+    assert creds["source"] == "hermes-global-auth-store"
+
+
+def test_codex_runtime_refreshes_and_writes_global_store_for_profile_fallback(profile_env, monkeypatch):
+    import hermes_cli.auth as auth
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state("global-access", "global-refresh"),
+    }))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={}))
+
+    def fake_refresh(access_token, refresh_token, *, timeout_seconds=20.0):
+        assert access_token == "global-access"
+        assert refresh_token == "global-refresh"
+        return {
+            "access_token": "new-global-access",
+            "refresh_token": "new-global-refresh",
+            "last_refresh": "2026-01-02T00:00:00Z",
+        }
+
+    monkeypatch.setattr(auth, "refresh_codex_oauth_pure", fake_refresh)
+
+    creds = auth.resolve_codex_runtime_credentials(force_refresh=True)
+
+    assert creds["api_key"] == "new-global-access"
+    global_data = json.loads((profile_env["global"] / "auth.json").read_text())
+    assert global_data["providers"]["openai-codex"]["tokens"] == {
+        "access_token": "new-global-access",
+        "refresh_token": "new-global-refresh",
+    }
+    profile_data = json.loads((profile_env["profile"] / "auth.json").read_text())
+    assert "openai-codex" not in profile_data.get("providers", {})
+
+
+def test_codex_concurrent_profile_workers_share_one_global_refresh(profile_env, monkeypatch):
+    import hermes_cli.auth as auth
+
+    expired_access = _jwt_with_exp(int(time.time()) - 3600)
+    fresh_access = _jwt_with_exp(int(time.time()) + 86400)
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state(expired_access, "global-refresh"),
+    }))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={}))
+
+    refresh_started = threading.Event()
+    call_lock = threading.Lock()
+    refresh_calls: list[tuple[str, str]] = []
+
+    def fake_refresh(access_token, refresh_token, *, timeout_seconds=20.0):
+        with call_lock:
+            refresh_calls.append((access_token, refresh_token))
+        refresh_started.set()
+        # Keep the selected global auth-file lock held long enough for the
+        # second worker to contend on it, then re-read the refreshed store.
+        time.sleep(0.2)
+        return {
+            "access_token": fresh_access,
+            "refresh_token": "new-global-refresh",
+            "last_refresh": "2026-01-02T00:00:00Z",
+        }
+
+    monkeypatch.setattr(auth, "refresh_codex_oauth_pure", fake_refresh)
+
+    def resolve() -> dict:
+        return auth.resolve_codex_runtime_credentials(
+            refresh_if_expiring=True,
+            refresh_skew_seconds=60,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(resolve)
+        assert refresh_started.wait(timeout=2.0)
+        second = pool.submit(resolve)
+        results = [first.result(timeout=5.0), second.result(timeout=5.0)]
+
+    assert refresh_calls == [(expired_access, "global-refresh")]
+    assert [result["api_key"] for result in results] == [fresh_access, fresh_access]
+    assert {result["source"] for result in results} == {"hermes-global-auth-store"}
+    assert {result["auth_store"] for result in results} == {str(profile_env["global"] / "auth.json")}
+
+    global_data = json.loads((profile_env["global"] / "auth.json").read_text())
+    assert global_data["providers"]["openai-codex"]["tokens"] == {
+        "access_token": fresh_access,
+        "refresh_token": "new-global-refresh",
+    }
+    profile_data = json.loads((profile_env["profile"] / "auth.json").read_text())
+    assert "openai-codex" not in profile_data.get("providers", {})
+
+
+def test_codex_classic_mode_uses_local_store(tmp_path, monkeypatch):
+    import hermes_constants
+    from hermes_cli.auth import resolve_codex_runtime_credentials
+
+    global_root = tmp_path / "classic-hermes"
+    global_root.mkdir()
+    monkeypatch.setattr(hermes_constants, "get_default_hermes_root", lambda: global_root)
+    monkeypatch.setenv("HERMES_HOME", str(global_root))
+    _write(global_root / "auth.json", _make_auth_store(providers={
+        "openai-codex": _codex_state("classic-access", "classic-refresh"),
+    }))
+
+    creds = resolve_codex_runtime_credentials(refresh_if_expiring=False)
+
+    assert creds["api_key"] == "classic-access"
+    assert creds["source"] == "hermes-auth-store"
+    assert creds["auth_store"] == str(global_root / "auth.json")
+
+
+def test_save_codex_tokens_clears_stale_last_auth_error(profile_env):
+    import hermes_cli.auth as auth
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": {
+            **_codex_state("old-access", "old-refresh"),
+            "last_auth_error": {"code": "refresh_token_reused"},
+        },
+    }))
+
+    auth._save_codex_tokens(
+        {"access_token": "new-access", "refresh_token": "new-refresh"},
+        auth_file=profile_env["global"] / "auth.json",
+    )
+
+    global_data = json.loads((profile_env["global"] / "auth.json").read_text())
+    state = global_data["providers"]["openai-codex"]
+    assert state["tokens"] == {"access_token": "new-access", "refresh_token": "new-refresh"}
+    assert "last_auth_error" not in state

@@ -6666,7 +6666,7 @@ def _find_stale_dashboard_pids() -> list[int]:
             # greedy regex matching unrelated cmdlines that merely contain
             # both words (e.g. a chat session discussing "dashboard").
             result = subprocess.run(
-                ["ps", "-A", "-o", "pid=,command="],
+                ["ps", "-A", "-o", "pid=,uid=,command="],
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -6676,14 +6676,23 @@ def _find_stale_dashboard_pids() -> list[int]:
                     stripped = line.strip()
                     if not stripped or "grep" in stripped:
                         continue
-                    parts = stripped.split(None, 1)
-                    if len(parts) != 2:
+                    parts = stripped.split(None, 2)
+                    if len(parts) < 2:
                         continue
                     try:
                         pid = int(parts[0])
                     except ValueError:
                         continue
                     command = parts[1]
+                    if len(parts) == 3:
+                        try:
+                            uid = int(parts[1])
+                        except ValueError:
+                            command = stripped.split(None, 1)[1]
+                        else:
+                            if hasattr(os, "getuid") and uid != os.getuid():
+                                continue
+                            command = parts[2]
                     if any(p in command for p in patterns) and pid != self_pid:
                         dashboard_pids.append(pid)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):

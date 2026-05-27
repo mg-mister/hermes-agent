@@ -60,8 +60,13 @@ def _refresh_bindings_against_live_module():
 
 
 def _ps_line(pid: int, cmd: str) -> str:
-    """Format a line as it would appear in ``ps -A -o pid=,command=`` output."""
+    """Format a line as it would appear in legacy ``ps -A -o pid=,command=`` output."""
     return f"{pid:>7} {cmd}"
+
+
+def _ps_uid_line(pid: int, uid: int, cmd: str) -> str:
+    """Format a line as ``ps -A -o pid=,uid=,command=`` output."""
+    return f"{pid:>7} {uid:>5} {cmd}"
 
 
 def _ps_runner(stdout: str):
@@ -179,6 +184,23 @@ class TestFindStaleDashboardPids:
                     "notapid hermes dashboard --bad",
                     _ps_line(12345, "hermes dashboard --port 9119"),
                     "   ",
+                ]) + "\n",
+                stderr="",
+            )
+            pids = _find_stale_dashboard_pids()
+        assert pids == [12345]
+
+    def test_foreign_uid_dashboard_processes_are_ignored(self):
+        if not hasattr(os, "getuid"):
+            pytest.skip("POSIX uid filtering only")
+        current_uid = os.getuid()
+        foreign_uid = current_uid + 1
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(
+                returncode=0,
+                stdout="\n".join([
+                    _ps_uid_line(12345, current_uid, "python3 -m hermes_cli.main dashboard --port 9119"),
+                    _ps_uid_line(54321, foreign_uid, "python3 -m hermes_cli.main dashboard --port 9220"),
                 ]) + "\n",
                 stderr="",
             )

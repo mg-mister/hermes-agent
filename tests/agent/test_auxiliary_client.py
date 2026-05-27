@@ -1557,6 +1557,21 @@ class TestIsConnectionError:
         assert _is_connection_error(err) is False
 
 
+    @pytest.mark.parametrize("message", [
+        "stream-close",
+        "stream closed",
+        "stream has been closed",
+        "Attempted to read or stream content, but the stream has been closed.",
+    ])
+    def test_stream_closed_messages_are_connection_errors(self, message):
+        from agent.auxiliary_client import _is_connection_error
+        assert _is_connection_error(Exception(message)) is True
+
+    def test_httpx_stream_closed_is_connection_error(self):
+        from agent.auxiliary_client import _is_connection_error
+        httpx = pytest.importorskip("httpx")
+        assert _is_connection_error(httpx.StreamClosed()) is True
+
 class TestKimiTemperatureOmitted:
     """Kimi/Moonshot models should have temperature OMITTED from API kwargs.
 
@@ -2813,6 +2828,84 @@ class TestAuxiliaryClientPoisonedCacheEviction:
         finally:
             with _client_cache_lock:
                 _client_cache.clear()
+
+
+    def test_call_llm_retries_rebuilt_same_provider_before_fallback_on_stream_close(self):
+        poisoned = MagicMock(name="poisoned_client")
+        poisoned.base_url = "https://chatgpt.com/backend-api/codex"
+        poisoned.chat.completions.create.side_effect = Exception("stream-close")
+
+        rebuilt = MagicMock(name="rebuilt_client")
+        rebuilt.base_url = "https://chatgpt.com/backend-api/codex"
+        rebuilt_response = MagicMock(choices=[MagicMock(message=MagicMock(content="rebuilt-ok"))])
+        rebuilt.chat.completions.create.return_value = rebuilt_response
+
+        with patch(
+            "agent.auxiliary_client._resolve_task_provider_model",
+            return_value=("openai-codex", "gpt-5.5", None, None, None),
+        ), patch(
+            "agent.auxiliary_client._get_cached_client",
+            side_effect=[(poisoned, "gpt-5.5"), (rebuilt, "gpt-5.5")],
+        ) as mock_get_cached, patch(
+            "agent.auxiliary_client._evict_cached_client_instance",
+            return_value=True,
+        ) as mock_evict, patch(
+            "agent.auxiliary_client._try_configured_fallback_chain",
+            return_value=(None, None, ""),
+        ) as mock_chain, patch(
+            "agent.auxiliary_client._try_main_agent_model_fallback",
+            return_value=(None, None, ""),
+        ) as mock_main_fallback:
+            result = call_llm(
+                task="compression",
+                messages=[{"role": "user", "content": "x"}],
+            )
+
+        assert result is rebuilt_response
+        assert mock_get_cached.call_count == 2
+        mock_evict.assert_called_once_with(poisoned)
+        rebuilt.chat.completions.create.assert_called_once()
+        mock_chain.assert_not_called()
+        mock_main_fallback.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_call_llm_retries_rebuilt_same_provider_before_fallback_on_stream_close(self):
+        poisoned = MagicMock(name="poisoned_async_client")
+        poisoned.base_url = "https://chatgpt.com/backend-api/codex"
+        poisoned.chat.completions.create = AsyncMock(side_effect=Exception("stream-close"))
+
+        rebuilt = MagicMock(name="rebuilt_async_client")
+        rebuilt.base_url = "https://chatgpt.com/backend-api/codex"
+        rebuilt_response = MagicMock(choices=[MagicMock(message=MagicMock(content="rebuilt-ok"))])
+        rebuilt.chat.completions.create = AsyncMock(return_value=rebuilt_response)
+
+        with patch(
+            "agent.auxiliary_client._resolve_task_provider_model",
+            return_value=("openai-codex", "gpt-5.5", None, None, None),
+        ), patch(
+            "agent.auxiliary_client._get_cached_client",
+            side_effect=[(poisoned, "gpt-5.5"), (rebuilt, "gpt-5.5")],
+        ) as mock_get_cached, patch(
+            "agent.auxiliary_client._evict_cached_client_instance",
+            return_value=True,
+        ) as mock_evict, patch(
+            "agent.auxiliary_client._try_configured_fallback_chain",
+            return_value=(None, None, ""),
+        ) as mock_chain, patch(
+            "agent.auxiliary_client._try_main_agent_model_fallback",
+            return_value=(None, None, ""),
+        ) as mock_main_fallback:
+            result = await async_call_llm(
+                task="compression",
+                messages=[{"role": "user", "content": "x"}],
+            )
+
+        assert result is rebuilt_response
+        assert mock_get_cached.call_count == 2
+        mock_evict.assert_called_once_with(poisoned)
+        rebuilt.chat.completions.create.assert_awaited_once()
+        mock_chain.assert_not_called()
+        mock_main_fallback.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

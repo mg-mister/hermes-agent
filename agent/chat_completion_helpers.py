@@ -369,7 +369,9 @@ def interruptible_api_call(agent, api_kwargs: dict):
             _hint_fn = getattr(agent, "_codex_silent_hang_hint", None)
             if callable(_hint_fn):
                 try:
-                    _silent_hint = _hint_fn(model=api_kwargs.get("model"))
+                    _hint_value = _hint_fn(model=api_kwargs.get("model"))
+                    if isinstance(_hint_value, str):
+                        _silent_hint = _hint_value
                 except Exception:
                     _silent_hint = None
             logger.warning(
