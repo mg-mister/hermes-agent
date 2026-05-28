@@ -241,6 +241,62 @@ class TestDDGSSearchOnlyErrors:
         assert "search-only" in result["error"].lower()
         assert "duckduckgo" in result["error"].lower() or "ddgs" in result["error"].lower()
 
+    def test_web_extract_auto_ddgs_uses_direct_http_fallback(self, monkeypatch):
+        """A search-only backend auto-detected for search must not poison extract.
+
+        Fresh installs can have only the ddgs package available, or can set
+        ``web.search_backend: ddgs`` while leaving extract unconfigured. In
+        that case web_extract should use the conservative direct HTTP fallback
+        instead of returning a misleading ddgs "search-only" error. Explicitly
+        configuring ``web.backend`` / ``web.extract_backend`` to ddgs is still
+        covered by ``test_web_extract_returns_search_only_error`` above.
+        """
+        import asyncio
+        from tools import web_tools
+
+        async def fake_direct_http_extract(urls, **kwargs):
+            assert kwargs["reason"] == "no_extract_provider"
+            return [
+                {
+                    "url": urls[0],
+                    "title": "Example Domain",
+                    "content": "Example Domain fallback content",
+                    "raw_content": "Example Domain fallback content",
+                    "backend_fallback": {
+                        "from": "auto",
+                        "to": "direct-http",
+                        "reason": kwargs["reason"],
+                    },
+                }
+            ]
+
+        monkeypatch.setattr(web_tools, "_load_web_config", lambda: {
+            "search_backend": "ddgs",
+            "extract_backend": "",
+            "backend": "",
+        })
+        for key in ("FIRECRAWL_API_KEY", "FIRECRAWL_API_URL", "PARALLEL_API_KEY",
+                    "TAVILY_API_KEY", "EXA_API_KEY", "SEARXNG_URL", "BRAVE_SEARCH_API_KEY"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(web_tools, "_is_tool_gateway_ready", lambda: False)
+        monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: True)
+        monkeypatch.setattr(web_tools, "is_safe_url", lambda url: True)
+        monkeypatch.setattr(web_tools, "check_auxiliary_model", lambda: False)
+        monkeypatch.setattr(web_tools, "_direct_http_extract", fake_direct_http_extract)
+        monkeypatch.setattr("tools.interrupt.is_interrupted", lambda: False, raising=False)
+
+        assert web_tools._get_extract_backend() == ""
+        result_str = asyncio.get_event_loop().run_until_complete(
+            web_tools.web_extract_tool(["https://example.com"], use_llm_processing=False)
+        )
+        result = json.loads(result_str)
+        assert "success" not in result
+        assert result["results"][0]["title"] == "Example Domain"
+        assert "search-only" not in json.dumps(result).lower()
+        assert result["backend_fallbacks"] == [
+            {"from": "auto", "to": "direct-http", "reason": "no_extract_provider"}
+        ]
+
     def test_web_crawl_returns_search_only_error(self, monkeypatch):
         import asyncio
         from tools import web_tools

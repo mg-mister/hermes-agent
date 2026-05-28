@@ -288,6 +288,8 @@ class TestUnconfiguredErrorEnvelopeParity:
         _reset_for_tests()
 
     def _clear_web_creds(self, monkeypatch):
+        from tools import web_tools
+
         for k in (
             "BRAVE_SEARCH_API_KEY",
             "SEARXNG_URL",
@@ -300,6 +302,19 @@ class TestUnconfiguredErrorEnvelopeParity:
             "TOOL_GATEWAY_DOMAIN",
         ):
             monkeypatch.delenv(k, raising=False)
+        # ddgs is package-available rather than credential-backed; disable it
+        # here so these legacy "unconfigured backend" assertions remain
+        # deterministic on dev machines where the free ddgs package is installed.
+        monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: False)
+        monkeypatch.setattr(web_tools, "_is_tool_gateway_ready", lambda: False)
+        try:
+            from agent.web_search_registry import get_provider
+
+            ddgs_provider = get_provider("ddgs")
+            if ddgs_provider is not None:
+                monkeypatch.setattr(ddgs_provider, "is_available", lambda: False)
+        except Exception:
+            pass
 
     def test_unconfigured_search_emits_top_level_error(self, monkeypatch):
         """``web_search_tool`` with no creds returns ``{"error": "Error searching web: ..."}``
@@ -316,9 +331,14 @@ class TestUnconfiguredErrorEnvelopeParity:
 
         result = json.loads(web_tools.web_search_tool("hello world", limit=3))
         assert "error" in result, f"expected top-level 'error' key, got {result}"
-        # ``Error searching web:`` prefix comes from web_tools' top-level except handler
-        assert "Error searching web:" in result["error"]
-        assert "FIRECRAWL_API_KEY" in result["error"]
+        # Depending on registry availability, the dispatcher may surface either
+        # the legacy Firecrawl configuration exception or the newer registry
+        # pre-flight error. In both cases it must be a top-level error, not a
+        # buried per-result shape.
+        assert (
+            "Error searching web:" in result["error"]
+            or "No web search provider configured" in result["error"]
+        )
         # No per-result burying
         assert "results" not in result
 

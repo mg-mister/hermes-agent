@@ -45,7 +45,9 @@ import logging
 import os
 import re
 import asyncio
+from html.parser import HTMLParser
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from urllib.parse import urljoin
 import httpx  # noqa: F401 — kept at module top so tests can patch tools.web_tools.httpx
 # After the web-provider plugin migration (PR #25182), the Firecrawl SDK
 # proxy, client construction, and response-shape normalizers all live in
@@ -136,23 +138,24 @@ def _load_web_config() -> dict:
     except (ImportError, Exception):
         return {}
 
-def _get_backend() -> str:
-    """Determine which web backend to use (shared fallback).
+_VALID_WEB_BACKENDS = {
+    "parallel", "firecrawl", "tavily", "exa",
+    "searxng", "brave-free", "ddgs", "xai",
+}
 
-    Reads ``web.backend`` from config.yaml (set by ``hermes tools``).
-    Falls back to whichever API key is present for users who configured
-    keys manually without running setup.
-    """
-    configured = (_load_web_config().get("backend") or "").lower().strip()
-    if configured in {"parallel", "firecrawl", "tavily", "exa", "searxng", "brave-free", "ddgs", "xai"}:
-        return configured
+# Search-only backends must not be auto-selected for extract.  If the user
+# explicitly configures one as web.backend / web.extract_backend we still return
+# it so the dispatcher can surface the clear "search-only" error.  The filter
+# below applies only to unconfigured auto-detection.
+_CAPABILITY_AUTO_BACKENDS = {
+    "search": _VALID_WEB_BACKENDS,
+    "extract": {"firecrawl", "parallel", "tavily", "exa"},
+}
 
-    # Fallback for manual / legacy config — pick the highest-priority
-    # available backend. Firecrawl also counts as available when the managed
-    # tool gateway is configured for Nous subscribers.
-    # Free-tier backends (searxng / brave-free / ddgs) trail the paid ones so
-    # existing paid setups are unaffected.
-    backend_candidates = (
+
+def _auto_backend_candidates():
+    """Return legacy auto-detect candidates in priority order."""
+    return (
         ("firecrawl", _has_env("FIRECRAWL_API_KEY") or _has_env("FIRECRAWL_API_URL") or _is_tool_gateway_ready()),
         ("parallel", _has_env("PARALLEL_API_KEY")),
         ("tavily", _has_env("TAVILY_API_KEY")),
@@ -161,11 +164,40 @@ def _get_backend() -> str:
         ("brave-free", _has_env("BRAVE_SEARCH_API_KEY")),
         ("ddgs", _ddgs_package_importable()),
     )
-    for backend, available in backend_candidates:
+
+
+def _get_auto_backend(capability: Optional[str] = None) -> str:
+    """Pick an auto-detected backend, optionally filtered by capability."""
+    allowed = _CAPABILITY_AUTO_BACKENDS.get(capability) if capability else None
+    for backend, available in _auto_backend_candidates():
+        if allowed is not None and backend not in allowed:
+            continue
         if available:
             return backend
+    # Shared legacy backend keeps the historical Firecrawl default.  Capability
+    # lookups return empty when nothing suitable is configured so callers can
+    # degrade to a conservative local fallback instead of selecting a
+    # search-only provider just because ddgs is importable.
+    return "firecrawl" if capability is None else ""
 
-    return "firecrawl"  # default (backward compat)
+
+def _get_backend() -> str:
+    """Determine which web backend to use (shared fallback).
+
+    Reads ``web.backend`` from config.yaml (set by ``hermes tools``).
+    Falls back to whichever API key is present for users who configured
+    keys manually without running setup.
+    """
+    configured = (_load_web_config().get("backend") or "").lower().strip()
+    if configured in _VALID_WEB_BACKENDS:
+        return configured
+
+    # Fallback for manual / legacy config — pick the highest-priority
+    # available backend. Firecrawl also counts as available when the managed
+    # tool gateway is configured for Nous subscribers.
+    # Free-tier backends (searxng / brave-free / ddgs) trail the paid ones so
+    # existing paid setups are unaffected.
+    return _get_auto_backend()
 
 
 def _get_search_backend() -> str:
@@ -203,7 +235,19 @@ def _get_capability_backend(capability: str) -> str:
     specific = (cfg.get(f"{capability}_backend") or "").lower().strip()
     if specific and _is_backend_available(specific):
         return specific
-    return _get_backend()
+
+    # ``web.backend`` is an explicit shared backend. Preserve the historical
+    # behavior of returning it when available, even if it is search-only for an
+    # extract call; the dispatcher then emits a clear typed error instead of
+    # silently changing an explicit user choice.
+    shared = (cfg.get("backend") or "").lower().strip()
+    if shared and _is_backend_available(shared):
+        return shared
+
+    # Auto-detection is capability-aware. This prevents a search-only package
+    # such as ddgs from becoming the implicit extract backend on fresh installs
+    # where no extract provider has credentials.
+    return _get_auto_backend(capability)
 
 
 def _is_backend_available(backend: str) -> bool:
@@ -248,6 +292,181 @@ def _ddgs_package_importable() -> bool:
         return True
     except ImportError:
         return False
+
+
+class _BasicHTMLTextExtractor(HTMLParser):
+    """Tiny dependency-free HTML-to-text converter for direct HTTP fallback."""
+
+    _BLOCK_TAGS = {
+        "address", "article", "aside", "blockquote", "br", "div", "footer",
+        "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main",
+        "nav", "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul",
+    }
+    _SKIP_TAGS = {"script", "style", "noscript", "svg", "canvas"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: List[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:  # noqa: ANN001
+        tag = tag.lower()
+        if tag in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth == 0 and tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in self._SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+            return
+        if self._skip_depth == 0 and tag in self._BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0 and data:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        text = "".join(self._parts)
+        text = re.sub(r"[ \t\r\f\v]+", " ", text)
+        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+        return text.strip()
+
+
+def _html_to_basic_text(html: str) -> str:
+    parser = _BasicHTMLTextExtractor()
+    parser.feed(html)
+    parser.close()
+    return parser.text()
+
+
+def _extract_html_title(html: str) -> str:
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    title = re.sub(r"\s+", " ", match.group(1)).strip()
+    # HTMLParser(convert_charrefs=True) handles body text; for title, use a tiny
+    # parser pass to decode entities without pulling another dependency.
+    return _html_to_basic_text(title) or title
+
+
+def _looks_like_auth_or_config_error(result: Dict[str, Any]) -> bool:
+    err = str(result.get("error") or "").lower()
+    if not err:
+        return False
+    return any(
+        token in err
+        for token in (
+            "401", "403", "unauthorized", "forbidden", "authentication",
+            "invalid api key", "api key", "access token", "not configured",
+            "missing", "firecrawl_api_key", "payment", "credit",
+        )
+    )
+
+
+def _all_results_auth_or_config_errors(results: List[Dict[str, Any]]) -> bool:
+    return bool(results) and all(_looks_like_auth_or_config_error(r) for r in results)
+
+
+async def _direct_http_extract(
+    urls: List[str],
+    *,
+    format: str = "markdown",
+    reason: str = "no_extract_provider",
+    from_backend: str = "auto",
+) -> List[Dict[str, Any]]:
+    """Conservative dependency-free fallback for ``web_extract``.
+
+    This is intentionally basic: HTTP(S) only, SSRF and website policy checks
+    before every request/redirect, short timeout, no JavaScript rendering, no
+    PDF parsing, and simple HTML/text cleanup. It is a graceful degradation path
+    when no configured extract-capable provider is available; it is not a full
+    replacement for Firecrawl/Tavily/Exa/Parallel.
+    """
+    results: List[Dict[str, Any]] = []
+    headers = {"User-Agent": "HermesAgent/1.0 (+https://hermes-agent.nousresearch.com)"}
+    max_redirects = 5
+    max_bytes = 2_000_000
+
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+        for original_url in urls:
+            current_url = original_url
+            try:
+                for _redirect_count in range(max_redirects + 1):
+                    if not is_safe_url(current_url):
+                        raise ValueError("Blocked: URL targets a private or internal network address")
+                    blocked = check_website_access(current_url)
+                    if blocked:
+                        raise ValueError(blocked["message"])
+
+                    response = await client.get(current_url, follow_redirects=False)
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ValueError("Redirect response did not include a Location header")
+                        current_url = urljoin(str(response.url), location)
+                        continue
+                    break
+                else:
+                    raise ValueError(f"Too many redirects (>{max_redirects})")
+
+                final_url = str(response.url)
+                if not is_safe_url(final_url):
+                    raise ValueError("Blocked: final URL targets a private or internal network address")
+                blocked = check_website_access(final_url)
+                if blocked:
+                    raise ValueError(blocked["message"])
+                if response.status_code >= 400:
+                    raise ValueError(f"HTTP {response.status_code}")
+
+                body = response.content
+                if len(body) > max_bytes:
+                    raise ValueError("Response exceeded direct fallback size limit (2 MB)")
+                content_type = response.headers.get("content-type", "").lower()
+                text = response.text
+                title = ""
+                if "html" in content_type or "<html" in text[:500].lower():
+                    title = _extract_html_title(text)
+                    content = _html_to_basic_text(text)
+                elif content_type.startswith("text/") or "json" in content_type or "xml" in content_type:
+                    content = text.strip()
+                else:
+                    raise ValueError(
+                        f"Unsupported content type for direct fallback: {content_type or '<unknown>'}"
+                    )
+
+                results.append(
+                    {
+                        "url": final_url,
+                        "title": title,
+                        "content": content,
+                        "raw_content": content,
+                        "backend_fallback": {
+                            "from": from_backend or "auto",
+                            "to": "direct-http",
+                            "reason": reason,
+                        },
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                results.append(
+                    {
+                        "url": original_url,
+                        "title": "",
+                        "content": "",
+                        "raw_content": "",
+                        "error": f"Direct HTTP fallback failed: {exc}",
+                        "backend_fallback": {
+                            "from": from_backend or "auto",
+                            "to": "direct-http",
+                            "reason": reason,
+                        },
+                    }
+                )
+    return results
 
 # ─── Firecrawl Client ────────────────────────────────────────────────────────
 
@@ -927,6 +1146,7 @@ async def web_extract_tool(
                 safe_urls.append(url)
 
         # Dispatch only safe URLs to the configured backend
+        results: List[Dict[str, Any]] = []
         if not safe_urls:
             results = []
         else:
@@ -944,56 +1164,82 @@ async def web_extract_tool(
                 get_provider as _wsp_get_provider,
             )
 
+            web_cfg = _load_web_config()
+            explicit_backend = (
+                web_cfg.get("extract_backend") or web_cfg.get("backend") or ""
+            ).lower().strip()
+            backend_is_explicit = bool(explicit_backend and explicit_backend == backend)
+
             provider = _wsp_get_provider(backend) if backend else None
             if provider is None or not provider.supports_extract():
-                # When the configured name IS registered but doesn't support
-                # extract (search-only providers like brave-free / ddgs /
-                # searxng), surface that as a typed "search-only" error
-                # rather than silently switching backends. When the name
-                # isn't registered at all (typo / uninstalled plugin), fall
-                # through to the active-provider walk.
+                # Explicit search-only extract choices are user intent: keep the
+                # clear typed error. Auto-detected search-only backends (notably
+                # ddgs on fresh installs) should not poison extract; use the
+                # conservative direct HTTP fallback instead.
                 if provider is not None and not provider.supports_extract():
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": (
-                                f"{provider.display_name} is a search-only "
-                                "backend and cannot extract URL content. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
-                            ),
-                        },
-                        ensure_ascii=False,
+                    if backend_is_explicit:
+                        return json.dumps(
+                            {
+                                "success": False,
+                                "error": (
+                                    f"{provider.display_name} is a search-only "
+                                    "backend and cannot extract URL content. "
+                                    "Set web.extract_backend to firecrawl, "
+                                    "tavily, exa, or parallel."
+                                ),
+                            },
+                            ensure_ascii=False,
+                        )
+                    logger.info(
+                        "Auto-selected search-only backend %s for extract; using direct HTTP fallback",
+                        provider.name,
                     )
-                provider = get_active_extract_provider()
-                if provider is None:
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": (
-                                "No web extract provider configured. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
-                            ),
-                        },
-                        ensure_ascii=False,
+                    results = await _direct_http_extract(
+                        safe_urls,
+                        format=format,
+                        reason="auto_search_only_backend",
+                        from_backend=provider.name,
                     )
+                    provider = None
+                else:
+                    provider = get_active_extract_provider()
+                    if provider is None:
+                        logger.info("No extract provider configured; using direct HTTP fallback")
+                        results = await _direct_http_extract(
+                            safe_urls,
+                            format=format,
+                            reason="no_extract_provider",
+                            from_backend=backend or "auto",
+                        )
 
-            logger.info(
-                "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
-            )
-
-            # Async-or-sync dispatch: parallel + firecrawl have async
-            # extract(); exa + tavily are sync.
-            import inspect
-            if inspect.iscoroutinefunction(provider.extract):
-                results = await provider.extract(safe_urls, format=format)
-            else:
-                # Run sync extract() in a thread so we don't block the
-                # event loop on network I/O.
-                results = await asyncio.to_thread(
-                    provider.extract, safe_urls, format=format
+            if provider is not None:
+                logger.info(
+                    "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
                 )
+
+                # Async-or-sync dispatch: parallel + firecrawl have async
+                # extract(); exa + tavily are sync.
+                import inspect
+                if inspect.iscoroutinefunction(provider.extract):
+                    results = await provider.extract(safe_urls, format=format)
+                else:
+                    # Run sync extract() in a thread so we don't block the
+                    # event loop on network I/O.
+                    results = await asyncio.to_thread(
+                        provider.extract, safe_urls, format=format
+                    )
+
+                if (not backend_is_explicit) and _all_results_auth_or_config_errors(results):
+                    logger.info(
+                        "Auto-selected extract backend %s returned only auth/config errors; using direct HTTP fallback",
+                        provider.name,
+                    )
+                    results = await _direct_http_extract(
+                        safe_urls,
+                        format=format,
+                        reason="provider_auth_or_config_error",
+                        from_backend=provider.name,
+                    )
 
         # Merge any SSRF-blocked results back in
         if ssrf_blocked:
@@ -1102,7 +1348,24 @@ async def web_extract_tool(
             }
             for r in response.get("results", [])
         ]
+        backend_fallbacks = [
+            r["backend_fallback"]
+            for r in response.get("results", [])
+            if isinstance(r.get("backend_fallback"), dict)
+        ]
         trimmed_response = {"results": trimmed_results}
+        if backend_fallbacks:
+            # Keep fallback provenance visible without exposing credentials or
+            # backend payloads. Deduplicate while preserving order.
+            seen_fallbacks = set()
+            unique_fallbacks = []
+            for item in backend_fallbacks:
+                marker = json.dumps(item, sort_keys=True, ensure_ascii=False)
+                if marker in seen_fallbacks:
+                    continue
+                seen_fallbacks.add(marker)
+                unique_fallbacks.append(item)
+            trimmed_response["backend_fallbacks"] = unique_fallbacks
 
         if trimmed_response.get("results") == []:
             result_json = tool_error("Content was inaccessible or not found")
