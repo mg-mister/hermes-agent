@@ -4555,6 +4555,37 @@ class TelegramAdapter(BasePlatformAdapter):
             return {str(part).strip() for part in raw if str(part).strip()}
         return {part.strip() for part in str(raw).split(",") if part.strip()}
 
+    def _telegram_require_mention_chats(self) -> set[str]:
+        """Return chats/topics that require an explicit bot trigger.
+
+        Entries may be either a bare chat id (``-100123``), which applies to
+        the whole group/supergroup, or ``chat_id:thread_id`` for a single forum
+        topic. This lets one shared multi-agent group stay mention-only without
+        forcing that behaviour on every Telegram group.
+        """
+        raw = self.config.extra.get("require_mention_chats")
+        if raw is None:
+            raw = os.getenv("TELEGRAM_REQUIRE_MENTION_CHATS", "")
+        if isinstance(raw, list):
+            return {str(part).strip() for part in raw if str(part).strip()}
+        return {part.strip() for part in str(raw).split(",") if part.strip()}
+
+    def _telegram_message_requires_mention(self, message) -> bool:
+        """Return whether *message* is in a global or scoped mention-only area."""
+        if self._telegram_require_mention():
+            return True
+        scoped = self._telegram_require_mention_chats()
+        if not scoped:
+            return False
+        chat_id = str(getattr(getattr(message, "chat", None), "id", ""))
+        if not chat_id:
+            return False
+        if chat_id in scoped:
+            return True
+        thread_id = getattr(message, "message_thread_id", None)
+        topic_id = str(thread_id) if thread_id is not None else self._GENERAL_TOPIC_THREAD_ID
+        return f"{chat_id}:{topic_id}" in scoped
+
     def _telegram_observe_allowed_chats(self) -> set[str]:
         """Chats where observed group context may use a shared source.
 
@@ -4856,7 +4887,7 @@ class TelegramAdapter(BasePlatformAdapter):
         # if require_mention is disabled, every group message is a request.
         if chat_id_str in self._telegram_free_response_chats():
             return False
-        if not self._telegram_require_mention():
+        if not self._telegram_message_requires_mention(message):
             return False
         if self._is_reply_to_bot(message):
             return False
@@ -4950,7 +4981,8 @@ class TelegramAdapter(BasePlatformAdapter):
         - the chat passes the ``allowed_chats`` whitelist (when set), or
           ``guest_mode`` is enabled and the bot is explicitly mentioned
         - the chat is explicitly allowlisted in ``free_response_chats``
-        - ``require_mention`` is disabled
+        - ``require_mention`` is disabled, and the chat/topic is not listed in
+          ``require_mention_chats``
         - the message replies to the bot
         - the bot is @mentioned
         - the text/caption matches a configured regex wake-word pattern
@@ -5011,7 +5043,7 @@ class TelegramAdapter(BasePlatformAdapter):
             return True
         if chat_id_str in self._telegram_free_response_chats():
             return True
-        if not self._telegram_require_mention():
+        if not self._telegram_message_requires_mention(message):
             return True
         if self._is_reply_to_bot(message):
             return True
