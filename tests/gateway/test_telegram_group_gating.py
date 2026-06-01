@@ -19,6 +19,7 @@ def _make_adapter(
     group_allow_from=None,
     allowed_chats=None,
     group_allowed_chats=None,
+    require_mention_chats=None,
     guest_mode=None,
     observe_unmentioned_group_messages=None,
     bot_username="hermes_bot",
@@ -58,6 +59,8 @@ def _make_adapter(
         extra["group_allowed_chats"] = group_allowed_chats
     else:
         extra["group_allowed_chats"] = []
+    if require_mention_chats is not None:
+        extra["require_mention_chats"] = require_mention_chats
     if guest_mode is not None:
         extra["guest_mode"] = guest_mode
     if observe_unmentioned_group_messages is not None:
@@ -154,6 +157,61 @@ def test_group_messages_can_be_opened_via_config():
     adapter = _make_adapter(require_mention=False)
 
     assert adapter._should_process_message(_group_message("hello everyone")) is True
+
+
+def test_require_mention_chats_scopes_mention_gate_to_one_group():
+    adapter = _make_adapter(
+        require_mention=False,
+        require_mention_chats=["-100"],
+    )
+
+    assert adapter._should_process_message(_group_message("side chatter", chat_id=-100)) is False
+    assert adapter._should_process_message(_group_message("side chatter", chat_id=-200)) is True
+
+    text = "@hermes_bot can you handle this?"
+    assert adapter._should_process_message(
+        _group_message(text, chat_id=-100, entities=[_mention_entity(text)])
+    ) is True
+
+
+def test_require_mention_chats_can_target_one_forum_topic():
+    adapter = _make_adapter(
+        require_mention=False,
+        require_mention_chats=["-100:28"],
+    )
+
+    assert adapter._should_process_message(_group_message("side chatter", chat_id=-100, thread_id=28)) is False
+    assert adapter._should_process_message(_group_message("side chatter", chat_id=-100, thread_id=25)) is True
+
+
+def test_require_mention_chats_observes_scoped_unmentioned_messages():
+    async def _run():
+        adapter = _make_adapter(
+            require_mention=False,
+            require_mention_chats=["-100"],
+            allowed_chats=["-100"],
+            group_allowed_chats=["-100"],
+            observe_unmentioned_group_messages=True,
+        )
+        store = _FakeSessionStore()
+        adapter._session_store = store
+        update = SimpleNamespace(
+            update_id=1001,
+            message=_group_message("side chatter", chat_id=-100),
+            effective_message=None,
+        )
+
+        await adapter._handle_text_message(update, SimpleNamespace())
+
+        adapter._message_handler.assert_not_awaited()
+        assert len(store.messages) == 1
+        session_id, message, skip_db = store.messages[0]
+        assert session_id == "telegram-group-session"
+        assert skip_db is False
+        assert message["observed"] is True
+        assert message["content"] == "[Alice Example|111]\nside chatter"
+
+    asyncio.run(_run())
 
 
 def test_unmentioned_group_messages_can_be_observed_without_dispatching():
@@ -822,6 +880,29 @@ def test_config_bridges_telegram_ignored_threads(monkeypatch, tmp_path):
 
     assert config is not None
     assert __import__("os").environ["TELEGRAM_IGNORED_THREADS"] == "31,42"
+
+
+def test_config_bridges_telegram_require_mention_chats(monkeypatch, tmp_path):
+    hermes_home = tmp_path / ".hermes"
+    hermes_home.mkdir()
+    (hermes_home / "config.yaml").write_text(
+        "telegram:\n"
+        "  require_mention: false\n"
+        "  require_mention_chats:\n"
+        "    - -1003921175748\n"
+        "    - \"-100123:28\"\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.delenv("TELEGRAM_REQUIRE_MENTION_CHATS", raising=False)
+
+    config = load_gateway_config()
+    tg_cfg = config.platforms[Platform.TELEGRAM] if config else None
+
+    assert tg_cfg is not None
+    assert tg_cfg.extra.get("require_mention_chats") == [-1003921175748, "-100123:28"]
+    assert __import__("os").environ["TELEGRAM_REQUIRE_MENTION_CHATS"] == "-1003921175748,-100123:28"
 
 
 # ---------------------------------------------------------------------------
