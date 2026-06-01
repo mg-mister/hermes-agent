@@ -231,9 +231,46 @@ async def _direct_http_extract_url(url: str, reason: str) -> Dict[str, Any]:
         }
 
     headers = {"User-Agent": "HermesAgent/1.0 (+https://hermes-agent.nousresearch.com/)"}
+    current_url = url
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0, headers=headers) as client:
-            response = await client.get(url)
+        async with httpx.AsyncClient(follow_redirects=False, timeout=10.0, headers=headers) as client:
+            for _redirect_hop in range(6):
+                if not is_safe_url(current_url):
+                    return {
+                        "url": current_url,
+                        "title": "",
+                        "content": "",
+                        "raw_content": "",
+                        "metadata": {"backend": "direct-http-fallback", "reason": reason},
+                        "error": "Blocked: URL targets a private or internal network address",
+                    }
+                response = await client.get(current_url)
+                if not response.is_redirect:
+                    break
+                location = response.headers.get("location")
+                if not location:
+                    break
+                from urllib.parse import urljoin
+                next_url = urljoin(str(response.url), location)
+                if not is_safe_url(next_url):
+                    return {
+                        "url": next_url,
+                        "title": "",
+                        "content": "",
+                        "raw_content": "",
+                        "metadata": {"backend": "direct-http-fallback", "reason": reason},
+                        "error": "Blocked: redirect targets a private or internal network address",
+                    }
+                current_url = next_url
+            else:
+                return {
+                    "url": current_url,
+                    "title": "",
+                    "content": "",
+                    "raw_content": "",
+                    "metadata": {"backend": "direct-http-fallback", "reason": reason},
+                    "error": "Direct HTTP fallback exceeded redirect limit",
+                }
         response.raise_for_status()
     except Exception as exc:
         return {
