@@ -500,6 +500,55 @@ class TestDispatchersTriggerPluginDiscovery:
         finally:
             restore()
 
+    def test_direct_http_fallback_blocks_redirect_to_private_url(self, monkeypatch):
+        """Direct fallback must re-run SSRF checks on each redirect target."""
+        import asyncio
+        import httpx
+        from tools import web_tools
+
+        requested_urls = []
+        original_async_client = web_tools.httpx.AsyncClient
+
+        async def handler(request):
+            requested_urls.append(str(request.url))
+            if str(request.url) == "https://safe.test/start":
+                return httpx.Response(
+                    302,
+                    headers={"location": "http://127.0.0.1/private"},
+                    request=request,
+                )
+            return httpx.Response(200, text="should not fetch", request=request)
+
+        class MockedAsyncClient:
+            def __init__(self, *args, **kwargs):
+                kwargs["transport"] = httpx.MockTransport(handler)
+                self._client = original_async_client(*args, **kwargs)
+
+            async def __aenter__(self):
+                await self._client.__aenter__()
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return await self._client.__aexit__(exc_type, exc, tb)
+
+            async def get(self, url):
+                return await self._client.get(url)
+
+        monkeypatch.setattr(web_tools.httpx, "AsyncClient", MockedAsyncClient)
+        monkeypatch.setattr(
+            web_tools,
+            "is_safe_url",
+            lambda url: not str(url).startswith("http://127.0.0.1"),
+        )
+
+        result = asyncio.run(web_tools._direct_http_extract_url(
+            "https://safe.test/start",
+            "test fallback",
+        ))
+
+        assert "redirect targets" in result["error"]
+        assert requested_urls == ["https://safe.test/start"]
+
     def test_web_search_tool_runs_discovery_before_registry_lookup(self, monkeypatch):
         """``web_search_tool`` must invoke ``_ensure_web_plugins_loaded()``
         before the registry lookup for the same reason as the extract
