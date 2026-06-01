@@ -1117,6 +1117,13 @@ def _build_child_agent(
         prefill_messages=getattr(parent_agent, "prefill_messages", None),
         fallback_model=parent_fallback,
         enabled_toolsets=child_toolsets,
+        # Delegate children are not Kanban lifecycle actors, even when they are
+        # built inside a dispatcher-spawned worker process that has
+        # HERMES_KANBAN_TASK in its environment. model_tools auto-adds the
+        # kanban toolset for real top-level workers; explicitly subtract it
+        # here so a review/research child cannot complete/block the parent's
+        # task/run.
+        disabled_toolsets=["kanban"],
         quiet_mode=True,
         ephemeral_system_prompt=child_prompt,
         log_prefix=f"[subagent-{task_index}]",
