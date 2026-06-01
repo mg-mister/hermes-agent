@@ -301,6 +301,7 @@ class TestUnconfiguredErrorEnvelopeParity:
         # Reset firecrawl client cache so the unconfigured state is re-evaluated
         monkeypatch.setattr(web_tools, "_firecrawl_client", None, raising=False)
         monkeypatch.setattr(web_tools, "_firecrawl_client_config", None, raising=False)
+        monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: False)
         monkeypatch.setattr(web_tools, "_load_web_config", lambda: {})
 
         result = json.loads(web_tools.web_search_tool("hello world", limit=3))
@@ -431,6 +432,71 @@ class TestDispatchersTriggerPluginDiscovery:
             )
             assert "No web extract provider configured" not in json.dumps(result)
             assert web_search_registry.get_provider("firecrawl") is not None
+        finally:
+            restore()
+
+    def test_web_extract_shared_search_only_backend_uses_direct_http_fallback(self, monkeypatch):
+        """Shared/auto search-only backends should not make extraction unusable.
+
+        Only an explicit ``web.extract_backend`` search-only choice remains a
+        config error. When ``web.backend`` resolves to ddgs/brave/searxng and
+        no real extractor is available, the dispatcher falls back to basic
+        direct HTTP extraction for simple public pages.
+        """
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock
+        from agent.web_search_provider import WebSearchProvider
+        from agent import web_search_registry
+        from tools import web_tools
+
+        restore = self._clear_registry()
+        try:
+            class FakeDDGS(WebSearchProvider):
+                @property
+                def name(self) -> str:
+                    return "ddgs"
+
+                @property
+                def display_name(self) -> str:
+                    return "DuckDuckGo (ddgs)"
+
+                def is_available(self) -> bool:
+                    return True
+
+                def supports_search(self) -> bool:
+                    return True
+
+                def supports_extract(self) -> bool:
+                    return False
+
+            web_search_registry.register_provider(FakeDDGS())
+            monkeypatch.setattr(web_tools, "_ensure_web_plugins_loaded", lambda: None)
+            monkeypatch.setattr(web_tools, "_load_web_config", lambda: {"backend": "ddgs"})
+            monkeypatch.setattr(web_tools, "_ddgs_package_importable", lambda: True)
+            monkeypatch.setattr(web_tools, "is_safe_url", lambda url: True)
+            direct_fallback = AsyncMock(return_value=[{
+                "url": "https://example.com",
+                "title": "Example Domain",
+                "content": "Example Domain fallback content",
+                "raw_content": "Example Domain fallback content",
+                "metadata": {"backend": "direct-http-fallback"},
+            }])
+            monkeypatch.setattr(web_tools, "_direct_http_extract", direct_fallback)
+
+            result = json.loads(asyncio.run(
+                web_tools.web_extract_tool(
+                    ["https://example.com"],
+                    use_llm_processing=False,
+                )
+            ))
+
+            assert result["results"][0]["title"] == "Example Domain"
+            assert "fallback content" in result["results"][0]["content"]
+            direct_fallback.assert_awaited_once_with(
+                ["https://example.com"],
+                "ddgs is search-only",
+            )
         finally:
             restore()
 
