@@ -390,6 +390,48 @@ class TestDelegateTask(unittest.TestCase):
 
         self.assertIs(mock_child._print_fn, sink)
 
+
+    def test_delegate_child_excludes_kanban_tools_under_worker_env(self):
+        """Regression: delegate children must not inherit the parent worker's
+        kanban lifecycle tools from HERMES_KANBAN_TASK.
+        """
+        parent = _make_mock_parent(depth=0)
+        parent.enabled_toolsets = ["terminal", "file"]
+
+        class FakeAgent:
+            def __init__(self, **kwargs):
+                import model_tools
+
+                self.kwargs = kwargs
+                schema = model_tools.get_tool_definitions(
+                    enabled_toolsets=kwargs.get("enabled_toolsets"),
+                    disabled_toolsets=kwargs.get("disabled_toolsets"),
+                    quiet_mode=True,
+                )
+                self.valid_tool_names = {
+                    s["function"].get("name") for s in schema if "function" in s
+                }
+
+        with patch.dict(os.environ, {"HERMES_KANBAN_TASK": "t_fake"}):
+            import model_tools
+            model_tools._clear_tool_defs_cache()
+            with patch("run_agent.AIAgent", FakeAgent):
+                child = _build_child_agent(
+                    task_index=0,
+                    goal="review only",
+                    context=None,
+                    toolsets=["terminal", "file"],
+                    model=None,
+                    max_iterations=10,
+                    parent_agent=parent,
+                    task_count=1,
+                )
+
+        self.assertIn("terminal", child.valid_tool_names)
+        self.assertIn("read_file", child.valid_tool_names)
+        self.assertNotIn("kanban_show", child.valid_tool_names)
+        self.assertNotIn("kanban_complete", child.valid_tool_names)
+
     def test_child_uses_thinking_callback_when_progress_callback_available(self):
         parent = _make_mock_parent(depth=0)
         parent.tool_progress_callback = MagicMock()
