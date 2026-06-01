@@ -77,7 +77,7 @@ def test_kanban_worker_env_overrides_profile_toolset_filter(monkeypatch, tmp_pat
     invalidate_check_fn_cache()
     _clear_tool_defs_cache()
     schema = get_tool_definitions(
-        enabled_toolsets=["terminal"],
+        enabled_toolsets=["terminal", "file"],
         quiet_mode=True,
     )
     names = {s["function"].get("name") for s in schema if "function" in s}
