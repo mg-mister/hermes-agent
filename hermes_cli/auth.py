@@ -33,7 +33,7 @@ import threading
 import time
 import uuid
 import webbrowser
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
@@ -946,6 +946,7 @@ def _auth_lock_path() -> Path:
 
 
 _auth_lock_holder = threading.local()
+_global_auth_lock_holder = threading.local()
 
 
 @contextmanager
@@ -1039,6 +1040,29 @@ def _auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
         yield
 
 
+@contextmanager
+def _global_auth_store_lock(timeout_seconds: float = AUTH_LOCK_TIMEOUT_SECONDS):
+    """Lock the global-root auth store when a profile borrows global Codex OAuth.
+
+    Profile workers can read the global auth store as a broker. If they refresh
+    a borrowed refresh token, the rotated token family must be written back to
+    that same global store under its own lock rather than copied into the
+    profile-local shadow store.
+    """
+    global_path = _global_auth_file_path()
+    if global_path is None:
+        with _auth_store_lock(timeout_seconds):
+            yield
+        return
+    with _file_lock(
+        global_path.with_suffix(".lock"),
+        _global_auth_lock_holder,
+        timeout_seconds,
+        "Timed out waiting for global auth store lock",
+    ):
+        yield
+
+
 def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
     auth_file = auth_file or _auth_file_path()
     if not auth_file.exists():
@@ -1079,8 +1103,8 @@ def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
     return {"version": AUTH_STORE_VERSION, "providers": {}}
 
 
-def _save_auth_store(auth_store: Dict[str, Any]) -> Path:
-    auth_file = _auth_file_path()
+def _save_auth_store(auth_store: Dict[str, Any], auth_file: Optional[Path] = None) -> Path:
+    auth_file = auth_file or _auth_file_path()
     auth_file.parent.mkdir(parents=True, exist_ok=True)
     # Tighten parent dir to 0o700 so siblings can't traverse to creds.
     # No-op on Windows (POSIX mode bits not enforced); ignore failures.
@@ -3261,7 +3285,50 @@ def _read_codex_tokens(*, _lock: bool = True) -> Dict[str, Any]:
             auth_store = _load_auth_store()
     else:
         auth_store = _load_auth_store()
-    state = _load_provider_state(auth_store, "openai-codex")
+    state: Optional[Dict[str, Any]] = None
+    state_scope = "profile"
+    providers = auth_store.get("providers")
+    if isinstance(providers, dict):
+        local_state = providers.get("openai-codex")
+        if isinstance(local_state, dict):
+            state = dict(local_state)
+
+    def _global_codex_state() -> Optional[Dict[str, Any]]:
+        global_store = _load_global_auth_store()
+        global_providers = global_store.get("providers") if global_store else None
+        global_state = (
+            global_providers.get("openai-codex")
+            if isinstance(global_providers, dict)
+            else None
+        )
+        return dict(global_state) if isinstance(global_state, dict) else None
+
+    if state is None:
+        global_state = _global_codex_state()
+        if global_state is not None:
+            state = global_state
+            state_scope = "global"
+
+    def _has_codex_token_pair(candidate: Any) -> bool:
+        if not isinstance(candidate, dict):
+            return False
+        candidate_tokens = candidate.get("tokens")
+        if not isinstance(candidate_tokens, dict):
+            return False
+        candidate_access = candidate_tokens.get("access_token")
+        candidate_refresh = candidate_tokens.get("refresh_token")
+        return (
+            isinstance(candidate_access, str)
+            and bool(candidate_access.strip())
+            and isinstance(candidate_refresh, str)
+            and bool(candidate_refresh.strip())
+        )
+
+    if state and not _has_codex_token_pair(state):
+        global_state = _global_codex_state()
+        if _has_codex_token_pair(global_state):
+            state = global_state
+            state_scope = "global"
     if not state:
         raise AuthError(
             "No Codex credentials stored. Run `hermes auth` to authenticate.",
@@ -3296,6 +3363,7 @@ def _read_codex_tokens(*, _lock: bool = True) -> Dict[str, Any]:
     return {
         "tokens": tokens,
         "last_refresh": state.get("last_refresh"),
+        "auth_store_scope": state_scope,
     }
 
 
@@ -3370,21 +3438,31 @@ def _sync_codex_pool_entries(
         entry["last_error_reset_at"] = None
 
 
-def _save_codex_tokens(tokens: Dict[str, str], last_refresh: str = None, label: str = None) -> None:
-    """Save Codex OAuth tokens to Hermes auth store (~/.hermes/auth.json)."""
+def _save_codex_tokens(
+    tokens: Dict[str, str],
+    last_refresh: str = None,
+    label: str = None,
+    *,
+    auth_file: Optional[Path] = None,
+) -> None:
+    """Save Codex OAuth tokens to a Hermes auth store."""
     if last_refresh is None:
         last_refresh = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    with _auth_store_lock():
-        auth_store = _load_auth_store()
+    with _auth_store_lock() if auth_file is None else nullcontext():
+        auth_store = _load_auth_store(auth_file)
         state = _load_provider_state(auth_store, "openai-codex") or {}
         state["tokens"] = tokens
         state["last_refresh"] = last_refresh
         state["auth_mode"] = "chatgpt"
+        # A successful Codex login/refresh replaces the OAuth token family.
+        # Clear stale terminal-auth diagnostics such as refresh_token_reused so
+        # metadata-only status checks do not keep reporting a fixed incident.
+        state.pop("last_auth_error", None)
         if label and str(label).strip():
             state["label"] = str(label).strip()
         _save_provider_state(auth_store, "openai-codex", state)
         _sync_codex_pool_entries(auth_store, tokens, last_refresh)
-        _save_auth_store(auth_store)
+        _save_auth_store(auth_store, auth_file)
 
 
 def refresh_codex_oauth_pure(
@@ -3518,6 +3596,8 @@ def refresh_codex_oauth_pure(
 def _refresh_codex_auth_tokens(
     tokens: Dict[str, str],
     timeout_seconds: float,
+    *,
+    auth_file: Optional[Path] = None,
 ) -> Dict[str, str]:
     """Refresh Codex access token using the refresh token.
     
@@ -3532,7 +3612,7 @@ def _refresh_codex_auth_tokens(
     updated_tokens["access_token"] = refreshed["access_token"]
     updated_tokens["refresh_token"] = refreshed["refresh_token"]
 
-    _save_codex_tokens(updated_tokens)
+    _save_codex_tokens(updated_tokens, auth_file=auth_file)
     return updated_tokens
 
 
@@ -3614,18 +3694,37 @@ def resolve_codex_runtime_credentials(
     if (not should_refresh) and refresh_if_expiring:
         should_refresh = _codex_access_token_is_expiring(access_token, refresh_skew_seconds)
     if should_refresh:
-        # Re-read under lock to avoid racing with other Hermes processes
-        with _auth_store_lock(timeout_seconds=max(float(AUTH_LOCK_TIMEOUT_SECONDS), refresh_timeout_seconds + 5.0)):
+        # Re-read under the store lock that owns the token family to avoid
+        # racing with other Hermes processes. A profile may borrow the
+        # global-root Codex singleton as a broker; refreshing that borrowed
+        # refresh token must rotate the global store, not create a stale
+        # profile-local shadow copy.
+        refresh_global_store = data.get("auth_store_scope") == "global"
+        lock_timeout = max(float(AUTH_LOCK_TIMEOUT_SECONDS), refresh_timeout_seconds + 5.0)
+        lock_ctx = (
+            _global_auth_store_lock(timeout_seconds=lock_timeout)
+            if refresh_global_store
+            else _auth_store_lock(timeout_seconds=lock_timeout)
+        )
+        with lock_ctx:
             data = _read_codex_tokens(_lock=False)
             tokens = dict(data["tokens"])
             access_token = str(tokens.get("access_token", "") or "").strip()
+            refresh_global_store = data.get("auth_store_scope") == "global"
 
             should_refresh = bool(force_refresh)
             if (not should_refresh) and refresh_if_expiring:
                 should_refresh = _codex_access_token_is_expiring(access_token, refresh_skew_seconds)
 
             if should_refresh:
-                tokens = _refresh_codex_auth_tokens(tokens, refresh_timeout_seconds)
+                if refresh_global_store:
+                    tokens = _refresh_codex_auth_tokens(
+                        tokens,
+                        refresh_timeout_seconds,
+                        auth_file=_global_auth_file_path(),
+                    )
+                else:
+                    tokens = _refresh_codex_auth_tokens(tokens, refresh_timeout_seconds)
                 access_token = str(tokens.get("access_token", "") or "").strip()
 
     base_url = (
@@ -3647,23 +3746,20 @@ def _pool_codex_access_token() -> str:
     """Return the most-recent usable access_token from the openai-codex pool.
 
     Used as a fallback by ``resolve_codex_runtime_credentials`` when the
-    singleton has no creds.  Reads ``credential_pool.openai-codex`` entries
-    directly from auth.json and picks the first non-empty access_token,
+    singleton has no creds.  Reads through ``read_credential_pool`` so profile
+    workers also inherit the global-root pool fallback when their profile-local
+    pool has no Codex entries.  Picks the first non-empty access_token,
     preferring entries that are not currently in an exhaustion cooldown.
     Returns ``""`` when no usable entry is found (caller handles by raising
     the original AuthError).
     """
     try:
-        with _auth_store_lock():
-            auth_store = _load_auth_store()
-        pool = auth_store.get("credential_pool")
-        if not isinstance(pool, dict):
-            return ""
-        entries = pool.get("openai-codex")
-        if not isinstance(entries, list):
+        raw_entries = read_credential_pool("openai-codex")
+        entries: List[Any] = raw_entries if isinstance(raw_entries, list) else []
+        if not entries:
             return ""
 
-        def _entry_usable(entry: Dict[str, Any]) -> bool:
+        def _entry_usable(entry: Any) -> bool:
             if not isinstance(entry, dict):
                 return False
             token = entry.get("access_token")
@@ -6296,12 +6392,16 @@ def _login_openai_codex(
             except (EOFError, KeyboardInterrupt):
                 do_import = "n"
             if do_import in {"y", "yes"}:
+                print("WARNING: importing Codex CLI credentials shares one OAuth refresh-token family")
+                print("between Hermes and Codex CLI / VS Code. This can trigger refresh_token_reused")
+                print("when another client rotates the token. For unattended gateways, choose")
+                print("a fresh Hermes login instead of importing ~/.codex/auth.json.")
                 _save_codex_tokens(cli_tokens)
                 base_url = os.getenv("HERMES_CODEX_BASE_URL", "").strip().rstrip("/") or DEFAULT_CODEX_BASE_URL
                 config_path = _update_config_for_provider("openai-codex", base_url)
                 print()
-                print("Credentials imported. Note: if Codex CLI refreshes its token,")
-                print("Hermes will keep working independently with its own session.")
+                print("Credentials imported from Codex CLI. Note: this is a shared OAuth lineage;")
+                print("run a fresh Hermes login if these credentials are for a long-running gateway.")
                 print(f"  Config updated: {config_path} (model.provider=openai-codex)")
                 return
 
