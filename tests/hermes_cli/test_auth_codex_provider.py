@@ -214,6 +214,185 @@ def test_resolve_codex_runtime_credentials_pool_fallback_no_usable_entry(tmp_pat
     assert exc.value.code == "codex_auth_missing"
 
 
+def test_resolve_codex_runtime_credentials_profile_stub_uses_global_singleton(tmp_path, monkeypatch):
+    """Profile workers inherit global singleton creds when a local Codex stub shadows state.
+
+    Regression for profile-home worker auth: a profile-local ``providers.openai-codex``
+    entry with account metadata but no access token makes local ``_read_codex_tokens``
+    raise ``codex_auth_missing_access_token``.  When the global-root singleton has
+    a full token pair, the runtime credential resolver should use it so refresh can
+    still run instead of falling back to a possibly expired pool-only access token.
+    """
+    root_home = tmp_path / "hermes-root"
+    profile_home = root_home / "profiles" / "mcsecurity"
+    profile_home.mkdir(parents=True, exist_ok=True)
+
+    global_auth_store = {
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {
+                    "access_token": "global-singleton-token",
+                    "refresh_token": "global-refresh",
+                },
+                "last_refresh": "2026-02-26T00:00:00Z",
+                "auth_mode": "chatgpt",
+            },
+        },
+        "credential_pool": {
+            "openai-codex": [
+                {
+                    "source": "device_code",
+                    "access_token": "global-pool-token",
+                    "refresh_token": "global-pool-refresh",
+                    "last_status": "ok",
+                    "auth_type": "oauth",
+                },
+            ],
+        },
+    }
+    (root_home / "auth.json").write_text(json.dumps(global_auth_store))
+
+    profile_auth_store = {
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {
+                    "account_id": "acct_local_stub",
+                    "id_token": "id_local_stub",
+                },
+                "auth_mode": "chatgpt",
+            },
+        },
+        "credential_pool": {},
+    }
+    (profile_home / "auth.json").write_text(json.dumps(profile_auth_store))
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    resolved = resolve_codex_runtime_credentials(refresh_if_expiring=False)
+    assert resolved["api_key"] == "global-singleton-token"
+    assert resolved["source"] == "hermes-auth-store"
+
+
+def test_resolve_codex_runtime_credentials_profile_stub_uses_global_pool(tmp_path, monkeypatch):
+    """Profile workers fall through to the global pool when no full global singleton exists."""
+    root_home = tmp_path / "hermes-root"
+    profile_home = root_home / "profiles" / "mcqa"
+    profile_home.mkdir(parents=True, exist_ok=True)
+
+    global_auth_store = {
+        "version": 1,
+        "providers": {},
+        "credential_pool": {
+            "openai-codex": [
+                {
+                    "source": "device_code",
+                    "access_token": "global-pool-token",
+                    "refresh_token": "global-pool-refresh",
+                    "last_status": "ok",
+                    "auth_type": "oauth",
+                },
+            ],
+        },
+    }
+    (root_home / "auth.json").write_text(json.dumps(global_auth_store))
+
+    profile_auth_store = {
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {
+                    "account_id": "acct_local_stub",
+                    "id_token": "id_local_stub",
+                },
+                "auth_mode": "chatgpt",
+            },
+        },
+        "credential_pool": {},
+    }
+    (profile_home / "auth.json").write_text(json.dumps(profile_auth_store))
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    resolved = resolve_codex_runtime_credentials(refresh_if_expiring=False)
+    assert resolved["api_key"] == "global-pool-token"
+    assert resolved["source"] == "credential_pool"
+
+
+def test_resolve_codex_runtime_credentials_profile_stub_refreshes_global_singleton(tmp_path, monkeypatch):
+    """Refreshing borrowed global Codex creds rotates the global broker, not the profile stub."""
+    root_home = tmp_path / "hermes-root"
+    profile_home = root_home / "profiles" / "mcsecurity"
+    profile_home.mkdir(parents=True, exist_ok=True)
+
+    global_auth_store = {
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {
+                    "access_token": "global-access-old",
+                    "refresh_token": "global-refresh-old",
+                },
+                "last_refresh": "2026-02-26T00:00:00Z",
+                "auth_mode": "chatgpt",
+            },
+        },
+        "credential_pool": {
+            "openai-codex": [
+                {
+                    "source": "device_code",
+                    "access_token": "global-access-old",
+                    "refresh_token": "global-refresh-old",
+                    "last_status": "ok",
+                    "auth_type": "oauth",
+                },
+            ],
+        },
+    }
+    (root_home / "auth.json").write_text(json.dumps(global_auth_store))
+
+    profile_auth_store = {
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {
+                    "account_id": "acct_local_stub",
+                    "id_token": "id_local_stub",
+                },
+                "auth_mode": "chatgpt",
+            },
+        },
+        "credential_pool": {},
+    }
+    (profile_home / "auth.json").write_text(json.dumps(profile_auth_store))
+    monkeypatch.setenv("HERMES_HOME", str(profile_home))
+
+    def _fake_pure(access_token, refresh_token, *, timeout_seconds):
+        assert access_token == "global-access-old"
+        assert refresh_token == "global-refresh-old"
+        return {
+            "access_token": "global-access-new",
+            "refresh_token": "global-refresh-new",
+            "last_refresh": "2026-06-03T00:00:00Z",
+        }
+
+    monkeypatch.setattr("hermes_cli.auth.refresh_codex_oauth_pure", _fake_pure)
+
+    resolved = resolve_codex_runtime_credentials(force_refresh=True, refresh_if_expiring=False)
+
+    assert resolved["api_key"] == "global-access-new"
+    global_auth = json.loads((root_home / "auth.json").read_text())
+    global_tokens = global_auth["providers"]["openai-codex"]["tokens"]
+    assert global_tokens["access_token"] == "global-access-new"
+    assert global_tokens["refresh_token"] == "global-refresh-new"
+    assert global_auth["credential_pool"]["openai-codex"][0]["access_token"] == "global-access-new"
+    assert global_auth["credential_pool"]["openai-codex"][0]["refresh_token"] == "global-refresh-new"
+
+    profile_auth = json.loads((profile_home / "auth.json").read_text())
+    profile_tokens = profile_auth["providers"]["openai-codex"]["tokens"]
+    assert "access_token" not in profile_tokens
+    assert "refresh_token" not in profile_tokens
+
+
 def test_resolve_provider_explicit_codex_does_not_fallback(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -298,6 +477,40 @@ def test_save_codex_tokens_syncs_credential_pool(tmp_path, monkeypatch):
 
     # Provider singleton is updated too.
     assert auth["providers"]["openai-codex"]["tokens"]["access_token"] == "new-at"
+
+
+def test_save_codex_tokens_clears_provider_last_auth_error(tmp_path, monkeypatch):
+    """A successful Codex login/refresh clears stale terminal auth diagnostics."""
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir(parents=True, exist_ok=True)
+    (hermes_home / "auth.json").write_text(json.dumps({
+        "version": 1,
+        "providers": {
+            "openai-codex": {
+                "tokens": {"access_token": "old-at", "refresh_token": "old-rt"},
+                "last_refresh": "2026-01-01T00:00:00Z",
+                "auth_mode": "chatgpt",
+                "last_auth_error": {
+                    "provider": "openai-codex",
+                    "code": "refresh_token_reused",
+                    "reason": "credential_pool_refresh_failure",
+                    "relogin_required": True,
+                },
+            },
+        },
+        "credential_pool": {},
+    }))
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+
+    _save_codex_tokens(
+        {"access_token": "new-at", "refresh_token": "new-rt"},
+        last_refresh="2026-05-27T00:00:00Z",
+    )
+
+    auth = json.loads((hermes_home / "auth.json").read_text())
+    provider_state = auth["providers"]["openai-codex"]
+    assert provider_state["tokens"]["access_token"] == "new-at"
+    assert "last_auth_error" not in provider_state
 
 
 def test_save_codex_tokens_syncs_manual_device_code_entries(tmp_path, monkeypatch):
