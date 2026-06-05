@@ -7,6 +7,7 @@ cache. See `tools/mcp_oauth_manager.py` for design rationale.
 import json
 import os
 import time
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -138,4 +139,41 @@ def test_manager_builds_hermes_provider_subclass(tmp_path, monkeypatch):
     assert _HERMES_PROVIDER_CLS is not None
     assert isinstance(provider, _HERMES_PROVIDER_CLS)
     assert provider._hermes_server_name == "srv"
+
+
+def test_manager_authorization_params_are_appended_to_redirect_url(tmp_path, monkeypatch):
+    """Manager construction preserves config-driven authorization URL params."""
+    import asyncio
+    import tools.mcp_oauth as mco
+    from tools.mcp_oauth_manager import MCPOAuthManager, reset_manager_for_tests
+
+    reset_manager_for_tests()
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    seen_urls = []
+
+    async def fake_redirect(url: str) -> None:
+        seen_urls.append(url)
+
+    monkeypatch.setattr(mco, "_redirect_handler", fake_redirect)
+
+    mgr = MCPOAuthManager()
+    provider = mgr.get_or_build_provider(
+        "linear",
+        "https://mcp.linear.app/mcp",
+        {"authorization_params": {"actor": "app"}},
+    )
+    assert provider is not None
+
+    handler = provider.context.redirect_handler
+    assert handler is not None
+
+    async def run_handler() -> None:
+        await handler("https://linear.app/oauth/authorize?client_id=abc&state=xyz")
+
+    asyncio.run(run_handler())
+
+    query = parse_qs(urlparse(seen_urls[-1]).query)
+    assert query["client_id"] == ["abc"]
+    assert query["state"] == ["xyz"]
+    assert query["actor"] == ["app"]
 

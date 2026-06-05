@@ -283,6 +283,26 @@ mcp_servers:
     auth: oauth
 ```
 
+Provider-specific, non-secret authorization URL parameters can be added under
+`oauth.authorization_params`. For example, Linear's OAuth Actor Authorization
+uses `actor=app` so writes are performed by the authorized app/agent rather than
+by the installing user:
+
+```yaml
+mcp_servers:
+  linear:
+    url: "https://mcp.linear.app/mcp"
+    auth: oauth
+    oauth:
+      authorization_params:
+        actor: app
+```
+
+Only put non-secret parameters here. Hermes rejects credential-like keys and
+reserved OAuth fields such as `client_id`, `redirect_uri`, `state`, `scope`, and
+`code_challenge` so provider flags cannot override SDK-generated PKCE values or
+leak tokens into browser/history output.
+
 Behavior:
 - Hermes uses the MCP SDK's OAuth 2.1 PKCE flow (metadata discovery, dynamic client registration, token exchange, and refresh)
 - On first connect, a browser window opens for authorization
