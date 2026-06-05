@@ -5,6 +5,7 @@ import os
 import stat
 import sys
 from io import BytesIO
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -204,6 +205,72 @@ class TestBuildOAuthAuth:
         })
         assert provider is not None
         assert provider.context.client_metadata.scope == "read write admin"
+
+    def test_authorization_params_are_appended_to_redirect_url(self, tmp_path, monkeypatch):
+        """Provider-specific OAuth authorization params reach the browser URL.
+
+        Linear's OAuth Actor Authorization requires ``actor=app`` on the
+        authorization URL. Hermes must preserve the SDK-generated query while
+        appending this config-driven provider parameter.
+        """
+        try:
+            from mcp.client.auth import OAuthClientProvider
+        except ImportError:
+            pytest.skip("MCP SDK auth not available")
+
+        seen_urls = []
+
+        async def fake_redirect(url: str) -> None:
+            seen_urls.append(url)
+
+        import tools.mcp_oauth as mco
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        monkeypatch.setattr(mco, "_redirect_handler", fake_redirect)
+
+        provider = build_oauth_auth("linear", "https://mcp.linear.app/mcp", {
+            "authorization_params": {"actor": "app"},
+        })
+        assert provider is not None
+
+        handler = provider.context.redirect_handler
+        assert handler is not None
+
+        async def run_handler() -> None:
+            await handler("https://linear.app/oauth/authorize?client_id=abc&state=xyz")
+
+        asyncio.run(run_handler())
+
+        parsed = urlparse(seen_urls[-1])
+        query = parse_qs(parsed.query)
+        assert query["client_id"] == ["abc"]
+        assert query["state"] == ["xyz"]
+        assert query["actor"] == ["app"]
+
+    @pytest.mark.parametrize(
+        "authorization_params, expected",
+        [
+            ({"client_id": "override"}, "may not override"),
+            ({"client_secret": "do-not-leak"}, "credential-like"),
+        ],
+    )
+    def test_authorization_params_reject_unsafe_keys(
+        self,
+        tmp_path,
+        monkeypatch,
+        authorization_params,
+        expected,
+    ):
+        """Extra authorization params must not override PKCE or leak secrets."""
+        try:
+            from mcp.client.auth import OAuthClientProvider
+        except ImportError:
+            pytest.skip("MCP SDK auth not available")
+
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        with pytest.raises(ValueError, match=expected):
+            build_oauth_auth("unsafe", "https://example.com/mcp", {
+                "authorization_params": authorization_params,
+            })
 
 
 # ---------------------------------------------------------------------------

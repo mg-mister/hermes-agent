@@ -28,6 +28,8 @@ Configuration in config.yaml::
           client_id: "pre-registered-id"        # skip dynamic registration
           client_secret: "secret"               # confidential clients only
           scope: "read write"                   # default: server-provided
+          authorization_params:                  # non-secret extra authorize URL params
+            actor: app                           # e.g. Linear OAuth Actor Authorization
           redirect_port: 0                      # 0 = auto-pick free port
           client_name: "My Custom Client"       # default: "Hermes Agent"
 """
@@ -47,7 +49,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, urlunparse
 from hermes_constants import secure_parent_dir
 
 logger = logging.getLogger(__name__)
@@ -160,6 +162,92 @@ def _can_open_browser() -> bool:
     if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
         return True
     return False
+
+
+_RESERVED_AUTHORIZATION_PARAM_KEYS = frozenset({
+    "response_type",
+    "client_id",
+    "redirect_uri",
+    "state",
+    "code_challenge",
+    "code_challenge_method",
+    "resource",
+    "scope",
+})
+_SENSITIVE_AUTHORIZATION_PARAM_KEY_RE = re.compile(
+    r"(authorization|bearer|cookie|password|secret|token|api[_-]?key|private[_-]?key)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_authorization_params(cfg: dict) -> list[tuple[str, str]]:
+    """Return validated extra OAuth authorization URL params from config.
+
+    These parameters are intentionally limited to the *authorization URL*
+    and are visible in stderr/browser history. Reject reserved SDK-generated
+    keys and obviously credential-bearing names so a config typo cannot leak
+    secrets while trying to add provider-specific flags such as Linear's
+    ``actor=app``.
+    """
+    raw = cfg.get("authorization_params")
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, dict):
+        raise ValueError("oauth.authorization_params must be a mapping of non-secret strings")
+
+    params: list[tuple[str, str]] = []
+    for key, value in raw.items():
+        key_s = str(key).strip()
+        if not key_s or value is None:
+            continue
+        key_l = key_s.lower()
+        if key_l in _RESERVED_AUTHORIZATION_PARAM_KEYS:
+            raise ValueError(f"oauth.authorization_params may not override SDK parameter '{key_s}'")
+        if _SENSITIVE_AUTHORIZATION_PARAM_KEY_RE.search(key_s):
+            raise ValueError(
+                f"oauth.authorization_params key '{key_s}' looks credential-like; "
+                "authorization URL params must be non-secret"
+            )
+
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for item in values:
+            if item is None:
+                continue
+            if isinstance(item, (dict, list, tuple)):
+                raise ValueError(
+                    f"oauth.authorization_params.{key_s} must be a scalar or list of scalars"
+                )
+            if isinstance(item, bool):
+                value_s = "true" if item else "false"
+            else:
+                value_s = str(item)
+            params.append((key_s, value_s))
+    return params
+
+
+def _append_authorization_params(url: str, params: list[tuple[str, str]]) -> str:
+    """Append provider-specific OAuth authorization params to ``url``."""
+    if not params:
+        return url
+    parsed = urlparse(url)
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    query = urlencode(query_pairs + params, doseq=True)
+    return urlunparse(parsed._replace(query=query))
+
+
+def _make_redirect_handler_with_authorization_params(
+    redirect_handler,
+    cfg: dict,
+):
+    """Wrap ``redirect_handler`` to append config-driven authorize params."""
+    params = _normalize_authorization_params(cfg)
+    if not params:
+        return redirect_handler
+
+    async def _wrapped_redirect_handler(url: str) -> None:
+        await redirect_handler(_append_authorization_params(url, params))
+
+    return _wrapped_redirect_handler
 
 
 def _read_json(path: Path) -> dict | None:
@@ -765,12 +853,16 @@ def build_oauth_auth(
     _configure_callback_port(cfg)
     client_metadata = _build_client_metadata(cfg)
     _maybe_preregister_client(storage, cfg, client_metadata)
+    redirect_handler = _make_redirect_handler_with_authorization_params(
+        _redirect_handler,
+        cfg,
+    )
 
     return OAuthClientProvider(
         server_url=server_url,
         client_metadata=client_metadata,
         storage=storage,
-        redirect_handler=_redirect_handler,
+        redirect_handler=redirect_handler,
         callback_handler=_wait_for_callback,
         timeout=float(cfg.get("timeout", 300)),
     )

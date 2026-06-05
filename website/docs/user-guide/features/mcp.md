@@ -220,6 +220,25 @@ mcp_servers:
     auth: oauth
 ```
 
+Some providers require additional **non-secret** authorization URL flags. For
+Linear's OAuth Actor Authorization, add `actor=app` so mutations are attributed
+to the authorized app/agent instead of the installing Linear user:
+
+```yaml
+mcp_servers:
+  linear:
+    url: "https://mcp.linear.app/mcp"
+    auth: oauth
+    oauth:
+      authorization_params:
+        actor: app
+```
+
+Hermes appends these parameters to the SDK-generated PKCE authorization URL. Do
+not put secrets here: authorization URL parameters are visible in the terminal,
+browser history, and provider logs. Credential-looking keys and reserved OAuth
+fields are rejected.
+
 On first connect, Hermes prints an authorize URL, opens your browser when possible, and waits for the OAuth callback on a local loopback port. Tokens are cached at `~/.hermes/mcp-tokens/<server>.json` with 0o600 perms; subsequent runs reuse them silently until refresh fails.
 
 **Remote / headless hosts.** When Hermes runs on a different machine than your browser, the loopback callback can't reach your laptop. Two ways to complete the flow:

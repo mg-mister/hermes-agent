@@ -412,6 +412,7 @@ class MCPOAuthManager:
             _build_client_metadata,
             _configure_callback_port,
             _is_interactive,
+            _make_redirect_handler_with_authorization_params,
             _maybe_preregister_client,
             _redirect_handler,
             _wait_for_callback,
@@ -434,13 +435,17 @@ class MCPOAuthManager:
         _configure_callback_port(cfg)
         client_metadata = _build_client_metadata(cfg)
         _maybe_preregister_client(storage, cfg, client_metadata)
+        redirect_handler = _make_redirect_handler_with_authorization_params(
+            _redirect_handler,
+            cfg,
+        )
 
         return _HERMES_PROVIDER_CLS(
             server_name=server_name,
             server_url=entry.server_url,
             client_metadata=client_metadata,
             storage=storage,
-            redirect_handler=_redirect_handler,
+            redirect_handler=redirect_handler,
             callback_handler=_wait_for_callback,
             timeout=float(cfg.get("timeout", 300)),
         )
