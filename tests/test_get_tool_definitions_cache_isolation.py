@@ -19,6 +19,7 @@ from __future__ import annotations
 import pytest
 
 import model_tools
+from tools.registry import invalidate_check_fn_cache
 
 
 @pytest.fixture(autouse=True)
@@ -92,3 +93,37 @@ class TestQuietModeCacheIsolation:
         explains why the bug only hit Gateway."""
         model_tools.get_tool_definitions(quiet_mode=False)
         assert len(model_tools._tool_defs_cache) == 0
+
+
+class TestKanbanWorkerToolsetScoping:
+    def test_top_level_kanban_worker_with_restricted_toolsets_gets_lifecycle_tools(
+        self, monkeypatch
+    ):
+        """Dispatcher workers keep kanban tools even when normal toolsets are restricted."""
+        monkeypatch.setenv("HERMES_KANBAN_TASK", "t_parent")
+        model_tools._tool_defs_cache.clear()
+        invalidate_check_fn_cache()
+
+        tools = model_tools.get_tool_definitions(
+            enabled_toolsets=["file", "terminal"], quiet_mode=True
+        )
+        names = {tool["function"]["name"] for tool in tools}
+
+        assert "kanban_complete" in names
+        assert "kanban_block" in names
+        assert "kanban_comment" in names
+
+    def test_explicit_disabled_kanban_overrides_worker_auto_include(self, monkeypatch):
+        """Delegate children can deny kanban despite inheriting HERMES_KANBAN_TASK."""
+        monkeypatch.setenv("HERMES_KANBAN_TASK", "t_parent")
+        model_tools._tool_defs_cache.clear()
+        invalidate_check_fn_cache()
+
+        tools = model_tools.get_tool_definitions(
+            enabled_toolsets=["file", "terminal"],
+            disabled_toolsets=["kanban"],
+            quiet_mode=True,
+        )
+        names = {tool["function"]["name"] for tool in tools}
+
+        assert not {name for name in names if name.startswith("kanban_")}

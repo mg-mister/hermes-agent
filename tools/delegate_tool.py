@@ -119,7 +119,7 @@ def _get_subagent_approval_callback():
 # toolset to request explicitly — the correct mechanism for nested
 # delegation is role='orchestrator', which re-adds "delegation" in
 # _build_child_agent regardless of this exclusion.
-_EXCLUDED_TOOLSET_NAMES = frozenset({"debugging", "safe", "delegation", "moa", "rl"})
+_EXCLUDED_TOOLSET_NAMES = frozenset({"debugging", "safe", "delegation", "kanban", "moa", "rl"})
 _SUBAGENT_TOOLSETS = sorted(
     name
     for name, defn in TOOLSETS.items()
@@ -676,6 +676,7 @@ def _strip_blocked_tools(toolsets: List[str]) -> List[str]:
         "clarify",
         "memory",
         "code_execution",
+        "kanban",
     }
     return [t for t in toolsets if t not in blocked_toolset_names]
 
@@ -967,6 +968,8 @@ def _build_child_agent(
     if effective_role == "orchestrator" and "delegation" not in child_toolsets:
         child_toolsets.append("delegation")
 
+    child_disabled_toolsets = ["kanban"] if os.environ.get("HERMES_KANBAN_TASK") else []
+
     workspace_hint = _resolve_workspace_hint(parent_agent)
     child_prompt = _build_child_system_prompt(
         goal,
@@ -1117,6 +1120,7 @@ def _build_child_agent(
         prefill_messages=getattr(parent_agent, "prefill_messages", None),
         fallback_model=parent_fallback,
         enabled_toolsets=child_toolsets,
+        disabled_toolsets=child_disabled_toolsets,
         quiet_mode=True,
         ephemeral_system_prompt=child_prompt,
         log_prefix=f"[subagent-{task_index}]",
