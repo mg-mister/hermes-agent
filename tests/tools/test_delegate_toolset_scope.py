@@ -7,8 +7,13 @@ arbitrary toolsets.
 """
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
-from tools.delegate_tool import _strip_blocked_tools
+from tools.delegate_tool import (
+    _SUBAGENT_TOOLSETS,
+    _build_child_agent,
+    _strip_blocked_tools,
+)
 
 
 class TestToolsetIntersection:
@@ -54,6 +59,16 @@ class TestToolsetIntersection:
         assert "memory" not in child
         assert "terminal" in child
 
+    def test_strip_blocked_removes_kanban_from_delegate_children(self):
+        """Delegate children must not be able to request Kanban lifecycle tools."""
+        child = _strip_blocked_tools(["terminal", "file", "kanban"])
+        assert child == ["terminal", "file"]
+        assert "kanban" not in child
+
+    def test_subagent_toolset_hint_does_not_advertise_kanban(self):
+        """The model-facing delegate_task schema must not list kanban as requestable."""
+        assert "kanban" not in _SUBAGENT_TOOLSETS
+
     def test_empty_intersection_yields_empty_toolsets(self):
         """If parent has no overlap with requested, child gets nothing extra."""
         parent = SimpleNamespace(enabled_toolsets=["terminal"])
@@ -63,3 +78,49 @@ class TestToolsetIntersection:
         scoped = [t for t in requested if t in parent_toolsets]
 
         assert scoped == []
+
+    def test_delegate_child_in_kanban_worker_passes_kanban_disabled_toolset(
+        self, monkeypatch
+    ):
+        """HERMES_KANBAN_TASK auto-inclusion must not re-add kanban to child agents.
+
+        Regression for incident t_65695d63 / source t_6ba07875 / remediation
+        t_cb03fc09: a delegated read-only review inherited Kanban tools and
+        completed/commented its parent task.
+        """
+        monkeypatch.setenv("HERMES_KANBAN_TASK", "t_parent")
+        parent = MagicMock()
+        parent.base_url = "https://example.invalid/api"
+        parent.api_key = "test-key"
+        parent.provider = "openrouter"
+        parent.api_mode = "chat_completions"
+        parent.model = "test/model"
+        parent.platform = "cli"
+        parent.enabled_toolsets = ["terminal", "file", "kanban"]
+        parent.providers_allowed = None
+        parent.providers_ignored = None
+        parent.providers_order = None
+        parent.provider_sort = None
+        parent.openrouter_min_coding_score = None
+        parent._session_db = None
+        parent._delegate_depth = 0
+        parent._active_children = []
+        parent._print_fn = None
+        parent.tool_progress_callback = None
+
+        mock_child = MagicMock()
+        with patch("run_agent.AIAgent", return_value=mock_child) as mock_agent:
+            _build_child_agent(
+                task_index=0,
+                goal="child",
+                context="ctx",
+                parent_agent=parent,
+                max_iterations=1,
+                model=None,
+                task_count=1,
+                toolsets=["terminal", "file", "kanban"],
+            )
+
+        kwargs = mock_agent.call_args.kwargs
+        assert kwargs["enabled_toolsets"] == ["terminal", "file"]
+        assert "kanban" in kwargs["disabled_toolsets"]
