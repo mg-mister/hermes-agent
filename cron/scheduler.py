@@ -221,11 +221,19 @@ atexit.register(_shutdown_parallel_pool)
 
 # Backward-compatible module override used by tests and emergency monkeypatches.
 _hermes_home: Path | None = None
+# Per-job Hermes home override used by profile-scoped cron runs.  This must be
+# context-local rather than the legacy module global: tick() can run profile jobs
+# alongside ordinary profile-less jobs, and profile-less script resolution must
+# keep using the scheduler's home while a profile job is active in another
+# thread.
+_job_hermes_home: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "cron_job_hermes_home", default=None
+)
 
 
 def _get_hermes_home() -> Path:
     """Resolve Hermes home dynamically while preserving test monkeypatch hooks."""
-    return _hermes_home or get_hermes_home()
+    return _job_hermes_home.get() or _hermes_home or get_hermes_home()
 
 
 def _get_lock_paths() -> tuple[Path, Path]:
@@ -256,8 +264,6 @@ def _job_profile_context(job_id: str, profile: Optional[str]):
         yield None
         return
 
-    global _hermes_home
-    prior_override = _hermes_home
     env_snapshot = os.environ.copy()
 
     from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
@@ -276,9 +282,10 @@ def _job_profile_context(job_id: str, profile: Optional[str]):
         return
 
     override_token = None
+    scheduler_home_token = None
     try:
         override_token = set_hermes_home_override(profile_home)
-        _hermes_home = profile_home
+        scheduler_home_token = _job_hermes_home.set(profile_home)
         logger.info(
             "Job '%s': using Hermes profile '%s' (%s)",
             job_id,
@@ -287,7 +294,8 @@ def _job_profile_context(job_id: str, profile: Optional[str]):
         )
         yield normalized_profile
     finally:
-        _hermes_home = prior_override
+        if scheduler_home_token is not None:
+            _job_hermes_home.reset(scheduler_home_token)
         if override_token is not None:
             reset_hermes_home_override(override_token)
         # Delta-based restore: remove added keys, restore changed keys.
