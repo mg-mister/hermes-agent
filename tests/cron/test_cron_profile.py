@@ -6,8 +6,10 @@ HERMES_HOME scoping, and tick() serialization for profile jobs.
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
+import time
 
 import pytest
 
@@ -447,3 +449,98 @@ class TestTickProfilePartition:
             assert seq_thread.startswith("cron-seq"), seq_thread
         par_thread = next(t for job_id, t in calls if job_id == "c")
         assert par_thread.startswith("cron-parallel"), par_thread
+
+    def test_profile_job_home_context_does_not_leak_to_parallel_profileless_script(
+        self, isolated_cron_profile_home, monkeypatch
+    ):
+        """Mixed due jobs must keep profile-less scripts on scheduler home.
+
+        Regression for a race where a profile job set scheduler._hermes_home to
+        the named profile while a profile=None script job was running in the
+        parallel pool, making the profile-less job resolve its script under the
+        profile's scripts/ directory instead of the scheduler profile/root.
+        """
+        import cron.scheduler as sched
+
+        root, profile_home = isolated_cron_profile_home
+        root_scripts = root / "scripts"
+        profile_scripts = profile_home / "scripts"
+        root_scripts.mkdir(parents=True)
+        profile_scripts.mkdir(parents=True)
+
+        ready_file = root / "profile-ready"
+        (profile_scripts / "hold_profile.py").write_text(
+            "import os, pathlib, time\n"
+            "pathlib.Path(os.environ['PROFILE_READY_FILE']).write_text('ready')\n"
+            "time.sleep(0.4)\n"
+            "print('profile done')\n",
+            encoding="utf-8",
+        )
+        (root_scripts / "root_home.py").write_text(
+            "import os\nprint(os.environ.get('HERMES_HOME', ''))\n",
+            encoding="utf-8",
+        )
+
+        profile_job = {
+            "id": "profile-hold",
+            "name": "profile-hold",
+            "profile": "support",
+            "script": "hold_profile.py",
+            "no_agent": True,
+        }
+        profileless_job = {
+            "id": "root-script",
+            "name": "root-script",
+            "profile": None,
+            "script": "root_home.py",
+            "no_agent": True,
+        }
+
+        monkeypatch.setenv("PROFILE_READY_FILE", str(ready_file))
+        monkeypatch.setattr(sched, "get_due_jobs", lambda: [profile_job, profileless_job])
+        monkeypatch.setattr(sched, "advance_next_run", lambda *_a, **_kw: None)
+        monkeypatch.setattr(sched, "_deliver_result", lambda *_a, **_kw: None)
+
+        saved_outputs: dict[str, str] = {}
+        marks: dict[str, tuple[bool, str | None]] = {}
+        monkeypatch.setattr(
+            sched,
+            "save_job_output",
+            lambda job_id, output: saved_outputs.setdefault(job_id, output) or (root / "out"),
+        )
+        monkeypatch.setattr(
+            sched,
+            "mark_job_run",
+            lambda job_id, success, error, **_kw: marks.setdefault(job_id, (success, error)),
+        )
+
+        class WaitingParallelPool:
+            def __init__(self):
+                self._inner = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1,
+                    thread_name_prefix="cron-parallel-test",
+                )
+
+            def submit(self, fn, *args, **kwargs):
+                def wait_for_profile_context_then_run():
+                    deadline = time.time() + 5
+                    while not ready_file.exists():
+                        if time.time() > deadline:
+                            raise AssertionError("profile job did not enter its script")
+                        time.sleep(0.01)
+                    return fn(*args, **kwargs)
+
+                return self._inner.submit(wait_for_profile_context_then_run)
+
+        waiting_pool = WaitingParallelPool()
+        monkeypatch.setattr(sched, "_get_parallel_pool", lambda _max_workers: waiting_pool)
+
+        try:
+            assert sched.tick(verbose=False) == 2
+        finally:
+            waiting_pool._inner.shutdown(wait=True, cancel_futures=False)
+
+        assert marks["profile-hold"] == (True, None)
+        assert marks["root-script"] == (True, None)
+        assert str(root) in saved_outputs["root-script"]
+        assert str(profile_home) not in saved_outputs["root-script"]
