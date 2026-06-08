@@ -3,6 +3,7 @@
 import threading
 import pytest
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from cron.jobs import (
     parse_duration,
@@ -814,6 +815,46 @@ class TestGetDueJobs:
             recovered_dt = recovered_dt.replace(tzinfo=timezone.utc)
         assert recovered_dt > now
 
+    def test_cron_next_run_with_stale_offset_is_normalized_before_due_check(self, tmp_cron_dir, monkeypatch):
+        """Cron next_run_at is a configured-timezone wall clock, not a fixed-offset instant.
+
+        A legacy/server-offset value like 10:00+02 for a Europe/Lisbon 10:00
+        cron job converts to 09:00+01 as an instant.  The scheduler must
+        normalize it to 10:00+01 before due checks, otherwise it fires once at
+        09:00 and then again at the real 10:00 occurrence.
+        """
+        lisbon = ZoneInfo("Europe/Lisbon")
+        now = datetime(2026, 6, 8, 9, 0, 20, tzinfo=lisbon)
+        monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
+
+        save_jobs(
+            [{
+                "id": "cron-stale-offset",
+                "name": "Weekly adviser audit",
+                "prompt": "...",
+                "schedule": {"kind": "cron", "expr": "0 10 * * 1", "display": "0 10 * * 1"},
+                "schedule_display": "0 10 * * 1",
+                "repeat": {"times": None, "completed": 0},
+                "enabled": True,
+                "state": "scheduled",
+                "paused_at": None,
+                "paused_reason": None,
+                "created_at": "2026-06-07T09:00:00+01:00",
+                "next_run_at": "2026-06-08T10:00:00+02:00",
+                "last_run_at": None,
+                "last_status": None,
+                "last_error": None,
+                "deliver": "local",
+                "origin": None,
+            }]
+        )
+
+        assert get_due_jobs() == []
+        updated = get_job("cron-stale-offset")
+        assert updated is not None
+        normalized = datetime.fromisoformat(updated["next_run_at"])
+        assert normalized == datetime(2026, 6, 8, 10, 0, 0, tzinfo=lisbon)
+
     def test_broken_interval_without_next_run_is_recovered(self, tmp_cron_dir, monkeypatch):
         now = datetime(2026, 3, 18, 10, 0, 0, tzinfo=timezone.utc)
         monkeypatch.setattr("cron.jobs._hermes_now", lambda: now)
@@ -841,7 +882,9 @@ class TestGetDueJobs:
         )
 
         assert get_due_jobs() == []
-        recovered = get_job("interval-recover")["next_run_at"]
+        updated_interval = get_job("interval-recover")
+        assert updated_interval is not None
+        recovered = updated_interval["next_run_at"]
         assert recovered is not None
         recovered_dt = datetime.fromisoformat(recovered)
         if recovered_dt.tzinfo is None:

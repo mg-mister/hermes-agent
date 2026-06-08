@@ -6247,6 +6247,17 @@ def dispatch_once(
                     (row["id"], row_assignee, current)
                 )
                 continue
+        task_for_preflight = get_task(conn, row["id"])
+        if task_for_preflight is not None:
+            missing_skills = _missing_forced_worker_skills(task_for_preflight)
+            if missing_skills:
+                reason = _forced_skill_preflight_block_reason(
+                    task_for_preflight, missing_skills,
+                )
+                if not dry_run:
+                    block_task(conn, row["id"], reason=reason)
+                result.auto_blocked.append(row["id"])
+                continue
         # Respawn guard: refuse to re-spawn when useful work is already
         # in-flight/recent, or when the last failure is a deterministic
         # blocker (quota / auth). The guard defers the spawn this tick so
@@ -6639,6 +6650,53 @@ def _worker_skill_available(hermes_home: Optional[str], skill_name: str) -> bool
     except OSError:
         pass
     return False
+
+
+def _worker_hermes_home_for_assignee(assignee: Optional[str]) -> Optional[str]:
+    """Return the HERMES_HOME a worker for ``assignee`` will run under.
+
+    This mirrors the profile resolution done in ``_default_spawn`` without
+    spawning a subprocess, so dispatcher preflight checks can evaluate the
+    same profile-scoped skill tree that the child CLI would see.
+    """
+    if not assignee:
+        return None
+    from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
+
+    profile_arg = normalize_profile_name(assignee)
+    try:
+        return resolve_profile_env(profile_arg)
+    except FileNotFoundError:
+        return None
+
+
+def _missing_forced_worker_skills(task: Task) -> list[str]:
+    """Return task-forced skills unavailable to the assigned worker profile."""
+    if not task.skills:
+        return []
+    worker_home = _worker_hermes_home_for_assignee(task.assignee)
+    missing: list[str] = []
+    seen: set[str] = set()
+    for raw_skill in task.skills:
+        skill = str(raw_skill or "").strip()
+        if not skill or skill in seen:
+            continue
+        seen.add(skill)
+        if not _worker_skill_available(worker_home, skill):
+            missing.append(skill)
+    return missing
+
+
+def _forced_skill_preflight_block_reason(task: Task, missing: list[str]) -> str:
+    quoted = ", ".join(repr(skill) for skill in missing)
+    noun = "skill" if len(missing) == 1 else "skills"
+    assignee = task.assignee or "<unassigned>"
+    return (
+        f"preflight: forced task {noun} unavailable to assignee profile "
+        f"{assignee!r}: {quoted}. Install/sync the skill(s) into that "
+        "profile or reassign the task to a profile that has them; worker "
+        "was not spawned."
+    )
 
 
 def _kanban_worker_skill_available(hermes_home: Optional[str]) -> bool:

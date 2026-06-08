@@ -3091,6 +3091,70 @@ def test_default_spawn_dedupes_builtin_skills_from_task_skills(kanban_home, monk
     )
 
 
+def test_dispatch_blocks_missing_forced_task_skills_before_spawn(
+    kanban_home, all_assignees_spawnable, monkeypatch,
+):
+    """Unavailable forced task skills are deterministic preflight blockers.
+
+    A profile-scoped worker exits at CLI startup with ``Unknown skill(s)`` when
+    the dispatcher passes ``--skills`` for a skill that does not resolve under
+    that profile's HERMES_HOME. The dispatcher should catch that before Popen:
+    block once with actionable redacted evidence, and never call spawn_fn.
+    """
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _home, skill_name: skill_name != "missing-profile-skill",
+    )
+
+    spawn_calls = []
+
+    def forbidden_spawn(task, ws):  # pragma: no cover - assertion below is clearer
+        spawn_calls.append((task.id, ws))
+        return 999
+
+    conn = kb.connect()
+    try:
+        tid = kb.create_task(
+            conn,
+            title="needs unavailable skill",
+            assignee="projectwikicurator",
+            skills=["project-wiki-curate", "missing-profile-skill"],
+        )
+
+        res = kb.dispatch_once(conn, spawn_fn=forbidden_spawn, failure_limit=3)
+
+        task = kb.get_task(conn, tid)
+        assert task is not None
+        assert task.status == "blocked"
+        assert tid in res.auto_blocked
+        assert spawn_calls == []
+
+        run = conn.execute(
+            "SELECT outcome, summary FROM task_runs WHERE task_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (tid,),
+        ).fetchone()
+        assert run["outcome"] == "blocked"
+        summary = run["summary"]
+        assert "preflight" in summary
+        assert "missing-profile-skill" in summary
+        assert "projectwikicurator" in summary
+        assert "auth.json" not in summary
+        assert ".env" not in summary
+
+        events = [
+            row["kind"]
+            for row in conn.execute(
+                "SELECT kind FROM task_events WHERE task_id = ? ORDER BY id", (tid,)
+            )
+        ]
+        assert "spawned" not in events
+        assert events[-1] == "blocked"
+    finally:
+        conn.close()
+
+
 def test_cli_create_skill_flag_repeatable(kanban_home):
     """`hermes kanban create --skill a --skill b` persists the list."""
     out = run_slash(
