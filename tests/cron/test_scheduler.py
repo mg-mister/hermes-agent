@@ -7,9 +7,52 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from cron.scheduler import _resolve_origin, _resolve_delivery_target, _deliver_result, _send_media_via_adapter, run_job, SILENT_MARKER, _build_job_prompt
+from cron.scheduler import (
+    _resolve_origin,
+    _resolve_delivery_target,
+    _deliver_result,
+    _send_media_via_adapter,
+    run_job,
+    SILENT_MARKER,
+    _build_job_prompt,
+    _cron_persistent_output_include_prompt,
+    _format_cron_agent_output,
+)
 from tools.env_passthrough import clear_env_passthrough
 from tools.credential_files import clear_credential_files
+
+
+class TestPersistentCronOutput:
+    def test_include_prompt_defaults_true_for_backwards_compatibility(self):
+        assert _cron_persistent_output_include_prompt({}, {}) is True
+
+    def test_config_can_omit_prompt_from_persistent_agent_output(self):
+        assert _cron_persistent_output_include_prompt(
+            {}, {"cron": {"persistent_output_include_prompt": False}}
+        ) is False
+
+    def test_job_override_wins_over_config(self):
+        assert _cron_persistent_output_include_prompt(
+            {"persistent_output_include_prompt": True},
+            {"cron": {"persistent_output_include_prompt": False}},
+        ) is True
+
+    def test_formatted_output_omits_full_prompt_when_disabled(self):
+        doc = _format_cron_agent_output(
+            job_name="monthly audit",
+            job_id="job-1",
+            run_time="2026-06-07 15:00:00",
+            schedule="0 10 1 * *",
+            prompt="SECRET verbose prompt with loaded skills",
+            section_title="Response",
+            section_body="Compact final answer.",
+            include_prompt=False,
+        )
+
+        assert "SECRET verbose prompt" not in doc
+        assert "Omitted from persistent cron output" in doc
+        assert "Compact final answer." in doc
+        assert "job-1" in doc
 
 
 class TestResolveOrigin:

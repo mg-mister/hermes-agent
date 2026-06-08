@@ -156,6 +156,62 @@ from cron.jobs import get_due_jobs, mark_job_run, save_job_output, advance_next_
 # locally for audit.
 SILENT_MARKER = "[SILENT]"
 
+
+def _cron_persistent_output_include_prompt(job: dict, cfg: object | None) -> bool:
+    """Return whether persistent cron output files should include the full prompt.
+
+    Agent-driven cron prompts can be very large because they include loaded
+    skills and other runtime context.  Delivery still uses the compact final
+    response; this toggle only controls the local ``cron/output/<job_id>/*.md``
+    audit document so installations can keep retention small without changing
+    job execution.
+
+    Backwards-compatible default is True.  A per-job
+    ``persistent_output_include_prompt`` value overrides config, otherwise
+    ``cron.persistent_output_include_prompt`` controls the profile.
+    """
+    value = job.get("persistent_output_include_prompt")
+    if value is None and isinstance(cfg, dict):
+        cron_cfg = cfg.get("cron", {}) if isinstance(cfg.get("cron", {}), dict) else {}
+        value = cron_cfg.get("persistent_output_include_prompt")
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
+def _format_cron_agent_output(
+    *,
+    job_name: str,
+    job_id: str,
+    run_time: str,
+    schedule: str,
+    prompt: str,
+    section_title: str,
+    section_body: str,
+    include_prompt: bool,
+) -> str:
+    """Format the persistent output document for an agent-driven cron run."""
+    prompt_section = (
+        f"## Prompt\n\n{prompt}\n\n"
+        if include_prompt
+        else (
+            "## Prompt\n\n"
+            "Omitted from persistent cron output "
+            "(`cron.persistent_output_include_prompt: false`).\n\n"
+        )
+    )
+    return (
+        f"# Cron Job: {job_name}\n\n"
+        f"**Job ID:** {job_id}\n"
+        f"**Run Time:** {run_time}\n"
+        f"**Schedule:** {schedule}\n\n"
+        f"{prompt_section}"
+        f"## {section_title}\n\n"
+        f"{section_body}\n"
+    )
+
 # ---------------------------------------------------------------------------
 # Persistent thread pool for parallel cron jobs.
 # The tick function submits jobs here and returns immediately so the ticker
@@ -1928,20 +1984,19 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
         # for delivery logic (empty response = no delivery).
         logged_response = final_response if final_response else "(No response generated)"
         
-        output = f"""# Cron Job: {job_name}
-
-**Job ID:** {job_id}
-**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}
-**Schedule:** {job.get('schedule_display', 'N/A')}
-
-## Prompt
-
-{prompt}
-
-## Response
-
-{logged_response}
-"""
+        output = _format_cron_agent_output(
+            job_name=job_name,
+            job_id=job_id,
+            run_time=_hermes_now().strftime('%Y-%m-%d %H:%M:%S'),
+            schedule=job.get('schedule_display', 'N/A'),
+            prompt=prompt,
+            section_title="Response",
+            section_body=logged_response,
+            include_prompt=_cron_persistent_output_include_prompt(
+                job,
+                _cfg if isinstance(_cfg, dict) else None,
+            ),
+        )
         
         logger.info("Job '%s' completed successfully", job_name)
         return True, output, final_response, None
@@ -1950,22 +2005,19 @@ def _run_job_impl(job: dict) -> tuple[bool, str, str, Optional[str]]:
         error_msg = f"{type(e).__name__}: {str(e)}"
         logger.exception("Job '%s' failed: %s", job_name, error_msg)
         
-        output = f"""# Cron Job: {job_name} (FAILED)
-
-**Job ID:** {job_id}
-**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}
-**Schedule:** {job.get('schedule_display', 'N/A')}
-
-## Prompt
-
-{prompt}
-
-## Error
-
-```
-{error_msg}
-```
-"""
+        output = _format_cron_agent_output(
+            job_name=f"{job_name} (FAILED)",
+            job_id=job_id,
+            run_time=_hermes_now().strftime('%Y-%m-%d %H:%M:%S'),
+            schedule=job.get('schedule_display', 'N/A'),
+            prompt=prompt if 'prompt' in locals() else "",
+            section_title="Error",
+            section_body=f"```\n{error_msg}\n```",
+            include_prompt=_cron_persistent_output_include_prompt(
+                job,
+                locals().get("_cfg") if isinstance(locals().get("_cfg"), dict) else None,
+            ),
+        )
         return False, output, "", error_msg
 
     finally:
