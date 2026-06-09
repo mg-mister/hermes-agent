@@ -8317,10 +8317,43 @@ else:
 
 _RESIZE_RE = re.compile(rb"\x1b\[RESIZE:(\d+);(\d+)\]")
 _PTY_READ_CHUNK_TIMEOUT = 0.2
+_PTY_IDLE_BACKOFF_INITIAL_S = 0.005
+_PTY_IDLE_BACKOFF_MAX_S = 0.05
 _VALID_CHANNEL_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 # Starlette's TestClient reports the peer as "testclient"; treat it as
 # loopback so tests don't need to rewrite request scope.
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "testclient"})
+
+
+class _PtyIdleBackoff:
+    """Small bounded delay for empty PTY reads.
+
+    ``PtyBridge.read`` already waits up to ``_PTY_READ_CHUNK_TIMEOUT`` for
+    output. When it still returns ``b""``, immediately rescheduling with
+    ``asyncio.sleep(0)`` can churn active-idle dashboard clients. Keep the first
+    extra delay tiny for responsiveness, cap it low, and reset as soon as data
+    arrives.
+    """
+
+    def __init__(
+        self,
+        *,
+        initial: float = _PTY_IDLE_BACKOFF_INITIAL_S,
+        maximum: float = _PTY_IDLE_BACKOFF_MAX_S,
+    ) -> None:
+        if initial <= 0 or maximum <= 0:
+            raise ValueError("PTY idle backoff values must be positive")
+        self._initial = min(initial, maximum)
+        self._maximum = maximum
+        self._next_delay = self._initial
+
+    def next_delay(self) -> float:
+        delay = self._next_delay
+        self._next_delay = min(self._next_delay * 2, self._maximum)
+        return delay
+
+    def reset(self) -> None:
+        self._next_delay = self._initial
 
 
 def _ws_client_reason(ws: "WebSocket") -> Optional[str]:
@@ -8788,15 +8821,17 @@ async def pty_ws(ws: WebSocket) -> None:
 
     # --- reader task: PTY master → WebSocket ----------------------------
     async def pump_pty_to_ws() -> None:
+        idle_backoff = _PtyIdleBackoff()
         while True:
             chunk = await loop.run_in_executor(
                 None, bridge.read, _PTY_READ_CHUNK_TIMEOUT
             )
             if chunk is None:  # EOF
                 return
-            if not chunk:  # no data this tick; yield control and retry
-                await asyncio.sleep(0)
+            if not chunk:  # no data this tick; bounded backoff before retrying
+                await asyncio.sleep(idle_backoff.next_delay())
                 continue
+            idle_backoff.reset()
             try:
                 await ws.send_bytes(chunk)
             except Exception:

@@ -47,6 +47,37 @@ except ImportError:  # pragma: no cover - starlette is a required install path
     _WebSocketDisconnect = Exception  # type: ignore[assignment]
 
 
+_EXPECTED_WS_SEND_AFTER_CLOSE_FRAGMENTS = (
+    "after sending 'websocket.close'",
+    "after sending \"websocket.close\"",
+    "close message has been sent",
+    "websocket is disconnected",
+    "websocket is not connected",
+    "connection is closed",
+    "connection closed",
+    "already completed",
+)
+
+
+def _is_expected_ws_send_disconnect(exc: BaseException) -> bool:
+    """Return true for benign client-disconnect send races.
+
+    Starlette/uvicorn surface a browser tab closing during an in-flight send as
+    either ``WebSocketDisconnect`` or RuntimeError/OSError variants that all mean
+    "the client is already gone". Those are normal for dashboard refreshes and
+    should close the transport without WARNING log noise; other send failures
+    remain visible.
+    """
+    if _WebSocketDisconnect is not Exception and isinstance(exc, _WebSocketDisconnect):
+        return True
+    if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+        return True
+    if isinstance(exc, RuntimeError):
+        message = str(exc).lower()
+        return any(fragment in message for fragment in _EXPECTED_WS_SEND_AFTER_CLOSE_FRAGMENTS)
+    return False
+
+
 class WSTransport:
     """Per-connection WS transport.
 
@@ -74,6 +105,11 @@ class WSTransport:
         self._loop = loop
         self._peer = peer
         self._closed = False
+        self._last_send_expected_disconnect = False
+
+    @property
+    def last_send_expected_disconnect(self) -> bool:
+        return self._last_send_expected_disconnect
 
     def write(self, obj: dict) -> bool:
         if self._closed:
@@ -101,10 +137,17 @@ class WSTransport:
             return not self._closed
         except Exception as exc:
             self._closed = True
-            _log.warning(
-                "ws write failed peer=%s error_type=%s error=%s",
-                self._peer, type(exc).__name__, exc,
-            )
+            self._last_send_expected_disconnect = _is_expected_ws_send_disconnect(exc)
+            if self._last_send_expected_disconnect:
+                _log.debug(
+                    "ws write closed by client peer=%s error_type=%s error=%s",
+                    self._peer, type(exc).__name__, exc,
+                )
+            else:
+                _log.warning(
+                    "ws write failed peer=%s error_type=%s error=%s",
+                    self._peer, type(exc).__name__, exc,
+                )
             return False
 
     async def write_async(self, obj: dict) -> bool:
@@ -115,14 +158,22 @@ class WSTransport:
         return not self._closed
 
     async def _safe_send(self, line: str) -> None:
+        self._last_send_expected_disconnect = False
         try:
             await self._ws.send_text(line)
         except Exception as exc:
             self._closed = True
-            _log.warning(
-                "ws send failed peer=%s error_type=%s error=%s",
-                self._peer, type(exc).__name__, exc,
-            )
+            self._last_send_expected_disconnect = _is_expected_ws_send_disconnect(exc)
+            if self._last_send_expected_disconnect:
+                _log.debug(
+                    "ws send closed by client peer=%s error_type=%s error=%s",
+                    self._peer, type(exc).__name__, exc,
+                )
+            else:
+                _log.warning(
+                    "ws send failed peer=%s error_type=%s error=%s",
+                    self._peer, type(exc).__name__, exc,
+                )
 
     def close(self) -> None:
         self._closed = True
@@ -275,12 +326,20 @@ async def handle_ws(ws: Any) -> None:
             if resp is not None and not await transport.write_async(resp):
                 disconnect_reason = "send_failed_after_response"
                 send_failures += 1
-                _log.warning(
-                    "ws response send failed peer=%s id=%s method=%s",
-                    peer,
-                    req_id,
-                    req_method,
-                )
+                if transport.last_send_expected_disconnect:
+                    _log.debug(
+                        "ws response send skipped after client disconnect peer=%s id=%s method=%s",
+                        peer,
+                        req_id,
+                        req_method,
+                    )
+                else:
+                    _log.warning(
+                        "ws response send failed peer=%s id=%s method=%s",
+                        peer,
+                        req_id,
+                        req_method,
+                    )
                 break
     finally:
         reaped_sessions = 0

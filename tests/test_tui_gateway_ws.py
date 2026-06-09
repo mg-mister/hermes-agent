@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from tui_gateway import server
 from tui_gateway import ws as ws_mod
@@ -47,6 +48,64 @@ def _run_disconnect(monkeypatch, seed):
             pass
 
     asyncio.run(ws_mod.handle_ws(FakeWS()))
+
+
+def test_expected_ws_response_send_disconnect_does_not_warn(monkeypatch, caplog):
+    monkeypatch.setattr(server, "_WS_ORPHAN_REAP_GRACE_S", 0)
+    monkeypatch.setattr(server, "dispatch", lambda req, transport: {"jsonrpc": "2.0", "id": req["id"], "result": "ok"})
+
+    class FakeWS:
+        def __init__(self):
+            self.sent = 0
+
+        async def accept(self):
+            pass
+
+        async def send_text(self, line):
+            self.sent += 1
+            if self.sent > 1:
+                raise RuntimeError("Cannot call send once a close message has been sent.")
+
+        async def receive_text(self):
+            return '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+        async def close(self):
+            pass
+
+    with caplog.at_level(logging.WARNING, logger="tui_gateway.ws"):
+        asyncio.run(ws_mod.handle_ws(FakeWS()))
+
+    assert "ws send failed" not in caplog.text
+    assert "ws response send failed" not in caplog.text
+
+
+def test_unexpected_ws_response_send_failure_still_warns(monkeypatch, caplog):
+    monkeypatch.setattr(server, "_WS_ORPHAN_REAP_GRACE_S", 0)
+    monkeypatch.setattr(server, "dispatch", lambda req, transport: {"jsonrpc": "2.0", "id": req["id"], "result": "ok"})
+
+    class FakeWS:
+        def __init__(self):
+            self.sent = 0
+
+        async def accept(self):
+            pass
+
+        async def send_text(self, line):
+            self.sent += 1
+            if self.sent > 1:
+                raise ValueError("serializer exploded")
+
+        async def receive_text(self):
+            return '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+        async def close(self):
+            pass
+
+    with caplog.at_level(logging.WARNING, logger="tui_gateway.ws"):
+        asyncio.run(ws_mod.handle_ws(FakeWS()))
+
+    assert "ws send failed" in caplog.text
+    assert "ws response send failed" in caplog.text
 
 
 def test_ws_disconnect_reaps_flagged_session_and_closes_worker(monkeypatch):
