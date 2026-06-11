@@ -6258,14 +6258,10 @@ def dispatch_once(
                     block_task(conn, row["id"], reason=reason)
                 result.auto_blocked.append(row["id"])
                 continue
-        # Respawn guard:
-        # in-flight/recent, or when the last failure is a deterministic
-        # blocker (quota / auth). The guard defers the spawn this tick so
-        # the task gets a chance to clear (rate limits often reset in
-        # seconds-to-minutes); the existing consecutive_failures counter
-        # still trips the auto-block circuit breaker after failure_limit
-        # consecutive failures, so a persistent auth error eventually
-        # blocks via the normal path rather than on first occurrence.
+        # Respawn guard: skip tasks that look in-flight/recent, or whose last
+        # failure is a deterministic blocker (quota/auth). The guard defers the
+        # spawn this tick so transient limits can clear; persistent failures
+        # still trip the auto-block circuit breaker via consecutive_failures.
         guard_reason = check_respawn_guard(conn, row["id"])
         if guard_reason is not None:
             result.respawn_guarded.append((row["id"], guard_reason))
@@ -6652,6 +6648,12 @@ def _worker_skill_available(hermes_home: Optional[str], skill_name: str) -> bool
     return False
 
 
+_DISPATCHER_BUILTIN_WORKER_SKILLS = (
+    "kanban-worker",
+    "mister-programming-agents",
+)
+
+
 def _worker_hermes_home_for_assignee(assignee: Optional[str]) -> Optional[str]:
     """Return the HERMES_HOME a worker for ``assignee`` will run under.
 
@@ -6661,12 +6663,12 @@ def _worker_hermes_home_for_assignee(assignee: Optional[str]) -> Optional[str]:
     """
     if not assignee:
         return None
-    from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
-
-    profile_arg = normalize_profile_name(assignee)
     try:
+        from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
+
+        profile_arg = normalize_profile_name(assignee)
         return resolve_profile_env(profile_arg)
-    except FileNotFoundError:
+    except Exception:
         return None
 
 
@@ -6679,7 +6681,7 @@ def _missing_forced_worker_skills(task: Task) -> list[str]:
     seen: set[str] = set()
     for raw_skill in task.skills:
         skill = str(raw_skill or "").strip()
-        if not skill or skill in seen:
+        if not skill or skill in seen or skill in _DISPATCHER_BUILTIN_WORKER_SKILLS:
             continue
         seen.add(skill)
         if not _worker_skill_available(worker_home, skill):
@@ -6854,8 +6856,7 @@ def _default_spawn(
     # profile-scoped skills dirs, and preloading a missing skill is fatal at CLI
     # startup. Omitting one is safe — the lifecycle contract still ships via
     # KANBAN_GUIDANCE, and task-specific skills still load below.
-    builtin_skills = ("kanban-worker", "mister-programming-agents")
-    for builtin_skill in builtin_skills:
+    for builtin_skill in _DISPATCHER_BUILTIN_WORKER_SKILLS:
         if _worker_skill_available(env.get("HERMES_HOME"), builtin_skill):
             cmd.extend(["--skills", builtin_skill])
     # Per-task force-loaded skills. Each name goes in its own
@@ -6865,10 +6866,9 @@ def _default_spawn(
     # quoting ambiguity if a skill name ever contains unusual chars.
     # Dedupe against the built-ins so we don't double-load them if a task author
     # asks for one explicitly.
-    builtin_skills = {"kanban-worker", "mister-programming-agents"}
     if task.skills:
         for sk in task.skills:
-            if sk and sk not in builtin_skills:
+            if sk and sk not in _DISPATCHER_BUILTIN_WORKER_SKILLS:
                 cmd.extend(["--skills", sk])
     if task.model_override:
         cmd.extend(["-m", task.model_override])

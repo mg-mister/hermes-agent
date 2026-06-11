@@ -3091,6 +3091,52 @@ def test_default_spawn_dedupes_builtin_skills_from_task_skills(kanban_home, monk
     )
 
 
+def test_dispatch_ignores_missing_builtin_forced_task_skills(
+    kanban_home, all_assignees_spawnable, monkeypatch,
+):
+    """Built-in worker skills stay optional/deduped during preflight.
+
+    ``_default_spawn`` only passes dispatcher built-ins when they resolve for
+    the assignee profile, and also dedupes explicit per-task built-ins. The
+    forced-skill preflight must mirror that behavior instead of blocking a task
+    whose only explicit skill is an unavailable built-in.
+    """
+    monkeypatch.setattr(kb, "_worker_skill_available", lambda _home, _skill: False)
+
+    spawn_calls = []
+
+    def allowed_spawn(task, ws):
+        spawn_calls.append((task.id, ws))
+        return 123
+
+    conn = kb.connect()
+    try:
+        tid = kb.create_task(
+            conn,
+            title="builtin only",
+            assignee="projectwikicurator",
+            skills=["kanban-worker"],
+        )
+
+        res = kb.dispatch_once(conn, spawn_fn=allowed_spawn, failure_limit=3)
+
+        task = kb.get_task(conn, tid)
+        assert task is not None
+        assert task.status == "running"
+        assert tid not in res.auto_blocked
+        assert [call[0] for call in spawn_calls] == [tid]
+
+        run = conn.execute(
+            "SELECT outcome, summary FROM task_runs WHERE task_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (tid,),
+        ).fetchone()
+        assert run["outcome"] is None
+        assert run["summary"] is None
+    finally:
+        conn.close()
+
+
 def test_dispatch_blocks_missing_forced_task_skills_before_spawn(
     kanban_home, all_assignees_spawnable, monkeypatch,
 ):
