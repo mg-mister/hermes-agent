@@ -2439,6 +2439,79 @@ class TestParallelTick:
         assert seen["tg-job"] == {"platform": "telegram", "chat_id": "111"}
         assert seen["dc-job"] == {"platform": "discord", "chat_id": "222"}
 
+    def test_profile_job_does_not_leak_script_home_to_parallel_profileless_job(self, tmp_path, monkeypatch):
+        """A profile job must not retarget a simultaneous profile-less script job."""
+        import threading
+
+        from cron import scheduler
+
+        scheduler._shutdown_parallel_pool()
+        scheduler._running_job_ids.clear()
+        monkeypatch.delenv("HERMES_CRON_MAX_PARALLEL", raising=False)
+
+        root = tmp_path / ".hermes"
+        mister_home = root / "profiles" / "mister"
+        linearops_home = root / "profiles" / "linearops"
+        (mister_home / "scripts").mkdir(parents=True)
+        (linearops_home / "scripts").mkdir(parents=True)
+        (mister_home / "scripts" / "mister-only.sh").write_text(
+            "#!/usr/bin/env bash\necho mister-home-ok\n",
+            encoding="utf-8",
+        )
+        (linearops_home / "scripts" / "linearops-slow.sh").write_text(
+            "#!/usr/bin/env bash\necho linearops-ok\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("HERMES_HOME", str(mister_home))
+
+        profile_context_entered = threading.Event()
+        release_profile_job = threading.Event()
+        original_run_script = scheduler._run_job_script
+
+        def coordinated_run_script(script_path):
+            active_home = scheduler._get_hermes_home().resolve()
+            if script_path == "linearops-slow.sh":
+                assert active_home == linearops_home.resolve()
+                profile_context_entered.set()
+                assert release_profile_job.wait(5), "profile-less script never ran"
+            elif script_path == "mister-only.sh":
+                assert profile_context_entered.wait(5), "profile job never entered profile context"
+                assert active_home == mister_home.resolve()
+                release_profile_job.set()
+            return original_run_script(script_path)
+
+        jobs = [
+            {
+                "id": "profile-job",
+                "name": "profile",
+                "deliver": "local",
+                "no_agent": True,
+                "script": "linearops-slow.sh",
+                "profile": "linearops",
+            },
+            {
+                "id": "profileless-job",
+                "name": "profileless",
+                "deliver": "local",
+                "no_agent": True,
+                "script": "mister-only.sh",
+            },
+        ]
+
+        with patch("cron.scheduler.get_due_jobs", return_value=jobs), \
+             patch("cron.scheduler.advance_next_run"), \
+             patch("cron.scheduler._run_job_script", side_effect=coordinated_run_script), \
+             patch("cron.scheduler.save_job_output", return_value="/tmp/out.md"), \
+             patch("cron.scheduler._deliver_result", return_value=None), \
+             patch("cron.scheduler.mark_job_run"):
+            result = scheduler.tick(verbose=False)
+
+        assert result == 2
+        assert profile_context_entered.is_set()
+        assert release_profile_job.is_set()
+        scheduler._shutdown_parallel_pool()
+        scheduler._running_job_ids.clear()
+
     def test_max_parallel_env_var(self, monkeypatch):
         """HERMES_CRON_MAX_PARALLEL=1 should restore serial behaviour."""
         monkeypatch.setenv("HERMES_CRON_MAX_PARALLEL", "1")
