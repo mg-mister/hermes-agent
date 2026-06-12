@@ -408,6 +408,22 @@ class TelegramAdapter(BasePlatformAdapter):
         """Telegram measures message length in UTF-16 code units."""
         return utf16_len
 
+    @staticmethod
+    def _is_missing_edit_target_error(exc: Exception) -> bool:
+        """Return True when Telegram says the message we tried to edit is gone.
+
+        This is a normal race for streaming/progress messages: the user,
+        platform, or a cleanup path may remove the preview before the final
+        edit/fallback edit lands.  It should trigger the caller's fallback-send
+        path, not a stack trace in gateway logs.
+        """
+        err = str(exc).lower()
+        return (
+            "message to edit not found" in err
+            or "message can't be edited" in err
+            or "message identifier is not specified" in err
+        )
+
     def __init__(self, config: PlatformConfig):
         super().__init__(config, Platform.TELEGRAM)
         self._app: Optional[Application] = None
@@ -2505,6 +2521,13 @@ class TelegramAdapter(BasePlatformAdapter):
                 # "Message is not modified" is a no-op, not an error
                 if "not modified" in str(fmt_err).lower():
                     return SendResult(success=True, message_id=message_id)
+                if self._is_missing_edit_target_error(fmt_err):
+                    logger.info(
+                        "[%s] Telegram edit target %s no longer exists; falling back to a fresh send",
+                        self.name,
+                        message_id,
+                    )
+                    return SendResult(success=False, error=str(fmt_err))
                 # Fallback: strip MarkdownV2 escapes and retry as clean plain text
                 logger.warning(
                     "[%s] MarkdownV2 edit failed, falling back to plain text: %s",
@@ -2523,6 +2546,13 @@ class TelegramAdapter(BasePlatformAdapter):
             # "Message is not modified" — content identical, treat as success
             if "not modified" in err_str:
                 return SendResult(success=True, message_id=message_id)
+            if self._is_missing_edit_target_error(e):
+                logger.info(
+                    "[%s] Telegram edit target %s no longer exists; falling back to a fresh send",
+                    self.name,
+                    message_id,
+                )
+                return SendResult(success=False, error=str(e))
             # Reactive split-and-deliver: parse_mode formatting can inflate
             # the payload past the limit even when the raw text was under
             # (e.g. MarkdownV2 escapes).  Same fix as the pre-flight path.
