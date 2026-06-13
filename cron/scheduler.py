@@ -12,6 +12,7 @@ import asyncio
 import atexit
 import concurrent.futures
 import contextvars
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -224,8 +225,79 @@ _hermes_home: Path | None = None
 
 
 def _get_hermes_home() -> Path:
-    """Resolve Hermes home dynamically while preserving test monkeypatch hooks."""
+    """Resolve Hermes home dynamically while preserving test monkeypatch hooks.
+
+    Context-local profile overrides must win over the legacy module-level
+    test hook. The hook is process-global, so using it for per-job profile
+    switching can leak a profile job's home into unrelated parallel jobs.
+    """
+    try:
+        from hermes_constants import get_hermes_home_override
+
+        override = get_hermes_home_override()
+        if override:
+            return Path(override)
+    except Exception:
+        pass
     return _hermes_home or get_hermes_home()
+
+
+@contextmanager
+def _job_profile_context(job_id: str, profile: Optional[str]):
+    """Temporarily run a job under a specific Hermes profile.
+
+    Cron jobs are stored and scheduled by the profile running the scheduler, but
+    an individual job can opt into a different runtime profile. While active, a
+    context-local Hermes home override points at the resolved profile directory
+    so _get_hermes_home(), .env/config loading, script resolution, AIAgent
+    construction, and downstream get_hermes_home() callers agree on the same
+    home without mutating scheduler-global path state.
+
+    Some existing provider/config paths still load profile .env values through
+    os.environ, so profile jobs also snapshot and restore the process
+    environment on exit. tick() runs profile jobs sequentially to keep that
+    temporary mutation isolated from other scheduled jobs.
+    """
+    raw_profile = str(profile or "").strip()
+    if not raw_profile:
+        yield None
+        return
+
+    env_snapshot = os.environ.copy()
+
+    from hermes_cli.profiles import normalize_profile_name, resolve_profile_env
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    normalized_profile = normalize_profile_name(raw_profile)
+    try:
+        profile_home = Path(resolve_profile_env(normalized_profile)).resolve()
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning(
+            "Job '%s': configured profile %r no longer valid (%s) — "
+            "falling back to scheduler default",
+            job_id, raw_profile, exc,
+        )
+        yield None
+        return
+
+    override_token = None
+    try:
+        override_token = set_hermes_home_override(profile_home)
+        logger.info(
+            "Job '%s': using Hermes profile '%s' (%s)",
+            job_id,
+            normalized_profile,
+            profile_home,
+        )
+        yield normalized_profile
+    finally:
+        os.environ.clear()
+        os.environ.update(env_snapshot)
+        if override_token is not None:
+            try:
+                reset_hermes_home_override(override_token)
+            except Exception:
+                logger.debug("Job '%s': failed to reset Hermes home override", job_id)
 
 
 def _get_lock_paths() -> tuple[Path, Path]:
@@ -1313,6 +1385,15 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
     job_id = job["id"]
     job_name = str(job.get("name") or job.get("prompt") or job_id or "cron job")
 
+    if (job.get("profile") or "").strip():
+        # Re-enter the normal run path under a context-local profile home.
+        # Remove the profile key for the recursive call so the implementation
+        # below stays single-sourced without a giant indentation-only wrapper.
+        with _job_profile_context(job_id, job.get("profile")):
+            scoped_job = dict(job)
+            scoped_job["profile"] = ""
+            return run_job(scoped_job)
+
     # ---------------------------------------------------------------
     # no_agent short-circuit — the script IS the job, no LLM involvement.
     # ---------------------------------------------------------------
@@ -2088,12 +2169,16 @@ def tick(verbose: bool = True, adapters=None, loop=None, sync: bool = True) -> i
                 mark_job_run(job["id"], False, str(e))
                 return False
 
-        # Partition due jobs: those with a per-job workdir mutate
-        # os.environ["TERMINAL_CWD"] inside run_job, which is process-global —
-        # so they MUST run sequentially to avoid corrupting each other.  Jobs
-        # without a workdir leave env untouched and stay parallel-safe.
-        sequential_jobs = [j for j in due_jobs if (j.get("workdir") or "").strip()]
-        parallel_jobs = [j for j in due_jobs if not (j.get("workdir") or "").strip()]
+        # Partition due jobs: those with a per-job workdir or runtime profile
+        # mutate process-global runtime state (TERMINAL_CWD or os.environ via
+        # profile .env loading), so they MUST run sequentially to avoid
+        # corrupting each other.  Jobs without workdir/profile stay
+        # parallel-safe.
+        def _job_mutates_process_state(j: dict) -> bool:
+            return bool((j.get("workdir") or "").strip() or (j.get("profile") or "").strip())
+
+        sequential_jobs = [j for j in due_jobs if _job_mutates_process_state(j)]
+        parallel_jobs = [j for j in due_jobs if not _job_mutates_process_state(j)]
 
         _results: list = []
         _all_futures: list = []
