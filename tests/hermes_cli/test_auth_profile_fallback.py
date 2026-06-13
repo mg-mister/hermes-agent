@@ -319,6 +319,58 @@ def test_load_provider_state_profile_wins_over_global(profile_env):
     assert state["access_token"] == "profile-token"
 
 
+def test_load_provider_state_ignores_empty_codex_profile_stub_when_global_has_tokens(profile_env):
+    """Terminal profile-local Codex stubs must not shadow global auth.
+
+    Worker profiles can be left with ``providers.openai-codex`` diagnostics
+    after a terminal refresh-token failure.  The local stub has no usable
+    access token, so profile workers should inherit the global-root Codex
+    auth instead of failing with ``Codex auth is missing access_token``.
+    """
+    from hermes_cli.auth import _load_auth_store, _load_provider_state
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": {
+            "tokens": {
+                "access_token": "global-codex-access",
+                "refresh_token": "global-codex-refresh",
+            },
+        },
+    }))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": {
+            "tokens": {},
+            "last_auth_error": {
+                "code": "refresh_token_reused",
+                "message": "terminal local failure",
+            },
+        },
+    }))
+
+    auth_store = _load_auth_store()
+    state = _load_provider_state(auth_store, "openai-codex")
+    assert state is not None
+    assert state["tokens"]["access_token"] == "global-codex-access"
+
+
+def test_load_provider_state_keeps_empty_codex_profile_stub_without_global_tokens(profile_env):
+    """Keep local diagnostics when there is no usable global fallback."""
+    from hermes_cli.auth import _load_auth_store, _load_provider_state
+
+    _write(profile_env["global"] / "auth.json", _make_auth_store(providers={}))
+    _write(profile_env["profile"] / "auth.json", _make_auth_store(providers={
+        "openai-codex": {
+            "tokens": {},
+            "last_auth_error": {"code": "refresh_token_reused"},
+        },
+    }))
+
+    auth_store = _load_auth_store()
+    state = _load_provider_state(auth_store, "openai-codex")
+    assert state is not None
+    assert state["last_auth_error"]["code"] == "refresh_token_reused"
+
+
 def test_load_provider_state_returns_none_when_neither_has_it(profile_env):
     from hermes_cli.auth import _load_auth_store, _load_provider_state
 

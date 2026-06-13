@@ -1128,6 +1128,33 @@ def _save_auth_store(auth_store: Dict[str, Any]) -> Path:
     return auth_file
 
 
+def _provider_state_has_runtime_material(provider_id: str, state: Dict[str, Any]) -> bool:
+    """Return True when a provider singleton can actually authenticate.
+
+    Profile-local OAuth state can be left behind after a terminal refresh
+    failure (for example ``providers.openai-codex.last_auth_error`` with an
+    empty ``tokens`` dict).  Such a stub should preserve diagnostics, but it
+    must not shadow a usable global-root auth store for profile workers.
+    """
+    normalized = (provider_id or "").strip().lower()
+    if normalized == "openai-codex":
+        tokens = state.get("tokens")
+        return bool(
+            isinstance(tokens, dict)
+            and str(tokens.get("access_token") or "").strip()
+        )
+    if normalized == "nous":
+        return bool(
+            str(state.get("access_token") or "").strip()
+            or str(state.get("agent_key") or "").strip()
+        )
+    if normalized in {"xai-oauth", "qwen-oauth", "minimax-oauth", "spotify"}:
+        return bool(str(state.get("access_token") or "").strip())
+    # API-key providers and unknown provider state keep the historical
+    # presence-based shadowing semantics.
+    return True
+
+
 def _load_provider_state(auth_store: Dict[str, Any], provider_id: str) -> Optional[Dict[str, Any]]:
     """Return a provider's persisted state.
 
@@ -1137,13 +1164,22 @@ def _load_provider_state(auth_store: Dict[str, Any], provider_id: str) -> Option
     profile can see providers (e.g. ``nous``) that were only authenticated at
     global scope. Once the user runs ``hermes auth login <provider>`` inside
     the profile, the profile state fully shadows the global state on the next
-    read. See issue #18594 follow-up.
+    read.
+
+    OAuth exception: a profile-local provider stub with no runtime material
+    (for example an ``openai-codex`` terminal-error record with empty tokens)
+    does not shadow a usable global-root provider state. That preserves local
+    diagnostics without breaking authorized profile workers.
+    See issue #18594 follow-up and MIS-87.
     """
     providers = auth_store.get("providers")
+    local_state: Optional[Dict[str, Any]] = None
     if isinstance(providers, dict):
         state = providers.get(provider_id)
         if isinstance(state, dict):
-            return dict(state)
+            local_state = dict(state)
+            if _provider_state_has_runtime_material(provider_id, local_state):
+                return local_state
 
     # Read-only fallback to the global-root auth store (profile mode only;
     # returns empty dict in classic mode so this is a no-op).
@@ -1153,8 +1189,10 @@ def _load_provider_state(auth_store: Dict[str, Any], provider_id: str) -> Option
         if isinstance(global_providers, dict):
             global_state = global_providers.get(provider_id)
             if isinstance(global_state, dict):
-                return dict(global_state)
-    return None
+                candidate = dict(global_state)
+                if _provider_state_has_runtime_material(provider_id, candidate):
+                    return candidate
+    return local_state
 
 
 def _save_provider_state(auth_store: Dict[str, Any], provider_id: str, state: Dict[str, Any]) -> None:
