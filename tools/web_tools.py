@@ -36,6 +36,7 @@ Usage:
     content = web_extract_tool(["https://example.com"], format="markdown")
 """
 
+import html
 import json
 import logging
 import os
@@ -337,6 +338,89 @@ def _get_default_summarizer_model() -> Optional[str]:
     return model
 
 _debug = DebugSession("web_tools", env_var="WEB_TOOLS_DEBUG")
+
+
+def _html_to_markdownish_text(content: str) -> tuple[str, str]:
+    """Best-effort HTML title/text extraction for the direct HTTP fallback.
+
+    This deliberately stays conservative and dependency-free. It is a safety
+    net for plain public pages when no extract-capable backend is configured,
+    not a replacement for Firecrawl/Tavily/Exa/Parallel or JS/PDF handling.
+    """
+    title = ""
+    m = re.search(r"<title[^>]*>(.*?)</title>", content, flags=re.I | re.S)
+    if m:
+        title = html.unescape(re.sub(r"\s+", " ", m.group(1)).strip())
+
+    text = re.sub(r"(?is)<(script|style|noscript|svg|template)[^>]*>.*?</\1>", " ", content)
+    text = re.sub(r"(?s)<!--.*?-->", " ", text)
+    text = re.sub(r"(?i)<\s*(br|p|div|section|article|header|footer|li|tr|h[1-6])\b[^>]*>", "\n", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return title, text.strip()
+
+
+async def _direct_http_extract(urls: List[str], *, format: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Small SSRF-safe direct HTTP fallback for public HTML/text pages.
+
+    Used only when Hermes has no extract-capable provider available. Redirects
+    are followed manually so every target is re-checked with ``async_is_safe_url``
+    before fetching, avoiding public→loopback/metadata redirect bypasses.
+    """
+    del format  # currently only plain text/HTML cleanup is supported by this fallback
+    results: List[Dict[str, Any]] = []
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    headers = {"User-Agent": "Hermes web_extract direct-http-fallback/1.0"}
+    async with httpx.AsyncClient(follow_redirects=False, timeout=timeout, headers=headers) as client:
+        for original_url in urls:
+            url = original_url
+            redirects = 0
+            try:
+                while True:
+                    if not await async_is_safe_url(url):
+                        raise ValueError("Blocked redirect to private or internal network address")
+                    response = await client.get(url)
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ValueError("Redirect response missing Location header")
+                        from urllib.parse import urljoin
+
+                        next_url = normalize_url_for_request(urljoin(str(response.url), location))
+                        if not await async_is_safe_url(next_url):
+                            raise ValueError("Blocked redirect to private or internal network address")
+                        redirects += 1
+                        if redirects > 5:
+                            raise ValueError("Too many redirects")
+                        url = next_url
+                        continue
+                    break
+
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").lower()
+                raw = response.text[:2_000_000]
+                if "html" in content_type or "<html" in raw[:500].lower():
+                    title, content = _html_to_markdownish_text(raw)
+                else:
+                    title, content = "", raw.strip()
+                results.append({
+                    "url": str(response.url) or original_url,
+                    "title": title,
+                    "content": content,
+                    "raw_content": content,
+                    "backend_fallback": "direct_http",
+                })
+            except Exception as exc:  # noqa: BLE001 - return per-URL extraction error
+                results.append({
+                    "url": original_url,
+                    "title": "",
+                    "content": "",
+                    "error": f"direct_http_fallback_failed: {exc}",
+                    "backend_fallback": "direct_http",
+                })
+    return results
 
 
 async def process_content_with_llm(
@@ -976,71 +1060,36 @@ async def web_extract_tool(
         if not safe_urls:
             results = []
         else:
-            backend = _get_extract_backend()
-
             # All seven providers (brave-free, ddgs, searxng, exa, parallel,
-            # tavily, firecrawl) now live as plugins. The dispatcher is a
-            # registry lookup + delegation. Some providers' extract() is
-            # async (parallel, firecrawl), others sync (exa, tavily) — we
-            # detect coroutine functions and await; sync functions run
-            # inline (the policy gate, SSRF re-check, etc. live inside the
-            # provider itself for the firecrawl per-URL loop).
+            # tavily, firecrawl) now live as plugins. Resolve by extract
+            # capability, not by the shared/search backend, so a search-only
+            # backend such as ddgs never becomes the web_extract dispatcher.
             _ensure_web_plugins_loaded()
-            from agent.web_search_registry import (
-                get_active_extract_provider,
-                get_provider as _wsp_get_provider,
-            )
+            from agent.web_search_registry import get_active_extract_provider
 
-            provider = _wsp_get_provider(backend) if backend else None
-            if provider is None or not provider.supports_extract():
-                # When the configured name IS registered but doesn't support
-                # extract (search-only providers like brave-free / ddgs /
-                # searxng), surface that as a typed "search-only" error
-                # rather than silently switching backends. When the name
-                # isn't registered at all (typo / uninstalled plugin), fall
-                # through to the active-provider walk.
-                if provider is not None and not provider.supports_extract():
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": (
-                                f"{provider.display_name} is a search-only "
-                                "backend and cannot extract URL content. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
-                            ),
-                        },
-                        ensure_ascii=False,
-                    )
-                provider = get_active_extract_provider()
-                if provider is None:
-                    return json.dumps(
-                        {
-                            "success": False,
-                            "error": (
-                                "No web extract provider configured. "
-                                "Set web.extract_backend to firecrawl, "
-                                "tavily, exa, or parallel."
-                            ),
-                        },
-                        ensure_ascii=False,
-                    )
-
-            logger.info(
-                "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
-            )
-
-            # Async-or-sync dispatch: parallel + firecrawl have async
-            # extract(); exa + tavily are sync.
-            import inspect
-            if inspect.iscoroutinefunction(provider.extract):
-                results = await provider.extract(safe_urls, format=format)
-            else:
-                # Run sync extract() in a thread so we don't block the
-                # event loop on network I/O.
-                results = await asyncio.to_thread(
-                    provider.extract, safe_urls, format=format
+            provider = get_active_extract_provider()
+            if provider is None:
+                logger.info(
+                    "No extract-capable web provider available; using direct HTTP fallback for %d URL(s)",
+                    len(safe_urls),
                 )
+                results = await _direct_http_extract(safe_urls, format=format)
+            else:
+                logger.info(
+                    "Web extract via %s: %d URL(s)", provider.name, len(safe_urls)
+                )
+
+                # Async-or-sync dispatch: parallel + firecrawl have async
+                # extract(); exa + tavily are sync.
+                import inspect
+                if inspect.iscoroutinefunction(provider.extract):
+                    results = await provider.extract(safe_urls, format=format)
+                else:
+                    # Run sync extract() in a thread so we don't block the
+                    # event loop on network I/O.
+                    results = await asyncio.to_thread(
+                        provider.extract, safe_urls, format=format
+                    )
 
         # Merge any SSRF-blocked results back in
         if ssrf_blocked:
