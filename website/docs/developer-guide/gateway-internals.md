@@ -65,6 +65,32 @@ When a message arrives from any platform:
    - Otherwise → create `AIAgent` instance and run conversation
 4. **Response** is sent back through the platform adapter
 
+### MEDIA attachment path validation
+
+Gateway delivery treats `MEDIA:<path>` as a native attachment request only after
+path validation. Normal replies, streaming/post-stream delivery, and
+`/background` completion delivery all route extracted media through
+`BasePlatformAdapter.filter_media_delivery_paths()` before calling platform
+methods such as `send_document`, `send_image_file`, `send_video`, or
+`send_voice`.
+
+Operator expectations:
+
+- Unsafe, placeholder, or nonexistent local paths are skipped before platform
+  upload. A concise warning such as `Skipping unsafe MEDIA directive path: ...`
+  is expected; raw filesystem or credential context should not be pasted into
+  chat.
+- Valid files under the configured allowlist still deliver normally. Configure
+  non-secret behavior in `config.yaml` under `gateway.media_delivery_allow_dirs`,
+  not in `.env`.
+- `/background` uses the same guard as the main/streaming paths, so a model
+  response cannot bypass path validation just because the task completed in the
+  background.
+- For diagnosis, enable normal gateway debug logging and reproduce the delivery
+  path; do not disable validation to “make the upload work”. If an operator must
+  allow a new export directory, add that directory to the allowlist and restart
+  the gateway deliberately.
+
 ### Session Key Format
 
 Session keys encode the full routing context:
