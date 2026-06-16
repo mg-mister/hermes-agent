@@ -2043,6 +2043,19 @@ class TestIsConnectionError:
         err.status_code = 500
         assert _is_connection_error(err) is False
 
+    def test_empty_protocol_errors_are_connection_errors(self):
+        import httpcore
+        import httpx
+        from agent.auxiliary_client import _is_connection_error
+
+        for err in (
+            httpx.RemoteProtocolError(""),
+            httpx.LocalProtocolError(""),
+            httpcore.RemoteProtocolError(""),
+            httpcore.LocalProtocolError(""),
+        ):
+            assert _is_connection_error(err) is True
+
 
 class TestKimiTemperatureOmitted:
     """Kimi/Moonshot models should have temperature OMITTED from API kwargs.
