@@ -13,6 +13,7 @@ from typing import Any, Dict, List
 
 import pytest
 
+from agent.web_search_provider import WebSearchProvider
 from tests.tools.conftest import register_all_web_providers
 
 
@@ -492,4 +493,117 @@ class TestDispatchersTriggerPluginDiscovery:
             assert web_search_registry.get_provider("brave-free") is not None
         finally:
             restore()
+
+
+class TestWebExtractDirectHttpFallback:
+    """web_extract should still handle simple public pages without extract API credentials."""
+
+    class SearchOnlyProvider(WebSearchProvider):
+        @property
+        def name(self) -> str:
+            return "ddgs"
+
+        @property
+        def display_name(self) -> str:
+            return "DuckDuckGo"
+
+        def is_available(self) -> bool:
+            return True
+
+        def supports_search(self) -> bool:
+            return True
+
+        def supports_extract(self) -> bool:
+            return False
+
+        def search(self, query: str, limit: int = 5):
+            return {"success": True, "data": {"web": []}}
+
+    class FakeResponse:
+        def __init__(self, url, text="", headers=None, redirect=False):
+            self.url = url
+            self.text = text
+            self.headers = headers or {}
+            self.is_redirect = redirect
+
+        def raise_for_status(self):
+            return None
+
+    def _install_no_extract_registry(self, monkeypatch):
+        from agent import web_search_registry
+        from tools import web_tools
+
+        web_search_registry._reset_for_tests()
+        web_search_registry.register_provider(self.SearchOnlyProvider())
+        monkeypatch.setattr(web_tools, "_ensure_web_plugins_loaded", lambda: None)
+        monkeypatch.setattr(web_tools, "check_auxiliary_model", lambda: False)
+        async def always_safe(url):
+            return True
+
+        monkeypatch.setattr(web_tools, "async_is_safe_url", always_safe)
+        return web_tools, web_search_registry
+
+    @pytest.mark.asyncio
+    async def test_search_only_backend_uses_direct_http_fallback(self, monkeypatch):
+        web_tools, web_search_registry = self._install_no_extract_registry(monkeypatch)
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def get(self, url):
+                return TestWebExtractDirectHttpFallback.FakeResponse(
+                    url,
+                    "<html><head><title>Example Domain</title></head><body><p>Hello world</p></body></html>",
+                    {"content-type": "text/html"},
+                )
+
+        monkeypatch.setattr(web_tools.httpx, "AsyncClient", FakeClient)
+
+        result = json.loads(await web_tools.web_extract_tool(["https://example.com"], use_llm_processing=False))
+
+        assert web_search_registry.get_active_extract_provider() is None
+        assert "search-only backend" not in json.dumps(result)
+        assert result["results"][0]["title"] == "Example Domain"
+        assert "Hello world" in result["results"][0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_direct_http_fallback_rechecks_redirect_safety(self, monkeypatch):
+        web_tools, _ = self._install_no_extract_registry(monkeypatch)
+
+        async def fake_is_safe(url):
+            return "127.0.0.1" not in url
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return None
+
+            async def get(self, url):
+                return TestWebExtractDirectHttpFallback.FakeResponse(
+                    url,
+                    "",
+                    {"location": "http://127.0.0.1/admin"},
+                    redirect=True,
+                )
+
+        monkeypatch.setattr(web_tools, "async_is_safe_url", fake_is_safe)
+        monkeypatch.setattr(web_tools.httpx, "AsyncClient", FakeClient)
+
+        result = json.loads(await web_tools.web_extract_tool(["https://public.example"], use_llm_processing=False))
+
+        assert result["results"][0]["content"] == ""
+        assert "direct_http_fallback_failed" in result["results"][0]["error"]
+        assert "private or internal" in result["results"][0]["error"]
 
