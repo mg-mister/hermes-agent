@@ -315,6 +315,25 @@ When you set an explicit auxiliary provider (e.g. `auxiliary.vision.provider: gl
 
 Transient HTTP 429 rate limits (`Retry-After: ...`) are treated as request constraints, not capacity problems — they respect your explicit provider choice and do **not** trigger the fallback ladder. Only daily/monthly quota exhaustion, payment errors, and connection failures bypass the explicit-provider gate.
 
+Connection failures include sparse stream-close/protocol exceptions from
+`httpx`/`httpcore`, including empty-message `RemoteProtocolError` and
+`LocalProtocolError`. Those usually mean a proxy/provider closed the stream
+before the auxiliary task finished; Hermes treats them as retry/fallback events
+rather than user-actionable configuration failures.
+
+Operator expectations for compression/model stream-close noise:
+
+- Normal logs should be concise and identify the fallback, for example an
+  auxiliary compression connection error followed by a fallback attempt. They
+  should not dump a traceback on every transient close.
+- If full stack traces are needed, rerun with debug logging for the gateway or
+  CLI process and keep the transcript/log local; do not paste raw provider
+  payloads or secrets into issues.
+- To roll back the behavior, remove or narrow the auxiliary fallback chain in
+  `config.yaml`; do not disable the connection-error classifier globally because
+  it also protects title generation, vision, compression, and other auxiliary
+  tasks from provider-side stream drops.
+
 For users on `provider: auto` (no explicit aux provider), the existing auto-detection chain runs in place of steps 2–3. Its first step is already the main agent model, so `auto` users get the same outcome with zero config.
 
 ### Optional: per-task fallback chain
