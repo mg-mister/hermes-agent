@@ -393,6 +393,44 @@ class TestExtractMedia:
             media, _ = BasePlatformAdapter.extract_media(content)
             assert len(media) == 1, f"Failed for: {content}"
 
+    def test_empty_media_control_tag_stripped_from_cleaned_text(self):
+        media, cleaned = BasePlatformAdapter.extract_media("Attached\nMEDIA:\n")
+        assert media == []
+        assert cleaned == "Attached"
+
+    def test_extensionless_absolute_media_control_tag_stripped_from_cleaned_text(self):
+        media, cleaned = BasePlatformAdapter.extract_media("Attached\nMEDIA:/absolute/path\n")
+        assert media == []
+        assert cleaned == "Attached"
+
+    def test_placeholder_media_control_tag_stripped_from_cleaned_text(self):
+        media, cleaned = BasePlatformAdapter.extract_media("Attached\nMEDIA:<screenshot_path>\n")
+        assert media == []
+        assert cleaned == "Attached"
+
+    def test_media_prose_with_colon_preserved(self):
+        content = "The exported MEDIA: files are ready for review."
+        media, cleaned = BasePlatformAdapter.extract_media(content)
+        assert media == []
+        assert cleaned == content
+
+    def test_inline_media_prose_at_line_end_preserved(self):
+        content = "The exported MEDIA:\nfiles are ready"
+        media, cleaned = BasePlatformAdapter.extract_media(content)
+        assert media == []
+        assert cleaned == content
+
+    def test_unknown_extension_media_tag_preserved_for_downstream_path_detection(self):
+        content = "Saved to\nMEDIA:/tmp/data.weirdext\n"
+        media, cleaned = BasePlatformAdapter.extract_media(content)
+        assert media == []
+        assert cleaned == content
+
+    def test_extension_bearing_media_tag_still_extracted_and_stripped(self):
+        media, cleaned = BasePlatformAdapter.extract_media("Attached\nMEDIA:/absolute/path.zip\n")
+        assert media == [("/absolute/path.zip", False)]
+        assert cleaned == "Attached"
+
     def test_relative_path_still_ignored(self):
         """Relative Windows-style paths (no drive letter) must not match."""
         media, _ = BasePlatformAdapter.extract_media(
