@@ -17,10 +17,14 @@ Two layers are tested:
 
 from __future__ import annotations
 
+import logging
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from gateway.config import PlatformConfig
 from gateway.platforms.base import SendResult
+from gateway.platforms.telegram import TelegramAdapter
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +119,27 @@ def test_send_result_retryable_can_be_set_true():
 def test_send_result_retryable_false_for_permanent():
     r = SendResult(success=False, error="message to edit not found")
     assert r.retryable is False
+
+
+@pytest.mark.asyncio
+async def test_finalize_message_not_found_does_not_retry_plain_text_or_log_traceback(caplog):
+    """A missing preview message is a permanent edit miss, not Markdown fallout."""
+    adapter = TelegramAdapter(PlatformConfig(enabled=True, token="fake-token"))
+    bot = MagicMock()
+    bot.edit_message_text = AsyncMock(
+        side_effect=RuntimeError("Bad Request: Message to edit not found")
+    )
+    adapter._bot = bot
+
+    with caplog.at_level(logging.WARNING, logger="gateway.platforms.telegram"):
+        result = await adapter.edit_message("12345", "678", "final **content**", finalize=True)
+
+    assert result.success is False
+    assert result.retryable is False
+    assert "Message to edit not found" in (result.error or "")
+    assert bot.edit_message_text.await_count == 1
+    assert "MarkdownV2 edit failed" not in caplog.text
+    assert "Permanent Telegram edit failure" in caplog.text
 
 
 # ---------------------------------------------------------------------------

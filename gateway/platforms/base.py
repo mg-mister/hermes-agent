@@ -3391,6 +3391,23 @@ class BasePlatformAdapter(ABC):
         lowered = error.lower()
         return "timed out" in lowered or "readtimeout" in lowered or "writetimeout" in lowered
 
+    @staticmethod
+    def _is_terminal_policy_error(error: Optional[str]) -> bool:
+        """Return True for platform policy/guardrail errors that fallback cannot fix."""
+        if not error:
+            return False
+        lowered = error.lower()
+        return any(
+            marker in lowered
+            for marker in (
+                "comment_body_too_long",
+                "comment_not_human_facing",
+                "comment_not_human_useful",
+                "comment_failed_redaction",
+                "non_canary_issue",
+            )
+        )
+
     def _unwrap_ephemeral(self, response: Any) -> Tuple[Optional[str], int]:
         """Unwrap a handler response into (text, ttl_seconds).
 
@@ -3447,6 +3464,13 @@ class BasePlatformAdapter(ABC):
         # Timeout errors are not safe to retry (message may have been
         # delivered) and not formatting errors — return the failure as-is.
         if not is_network and self._is_timeout_error(error_str):
+            return result
+
+        # Governed-writer policy rejections are terminal: wrapping the same
+        # content in a plain-text fallback only creates a second blocked write
+        # and noisy "Fallback send also failed" logs.
+        if not is_network and self._is_terminal_policy_error(error_str):
+            logger.warning("[%s] Send blocked by terminal policy: %s", self.name, error_str)
             return result
 
         if is_network:
