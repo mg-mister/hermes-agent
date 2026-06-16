@@ -1237,6 +1237,17 @@ MEDIA_TAG_CLEANUP_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Invalid MEDIA control tags should not leak into user-visible text either.
+# Keep this line-scoped so ordinary prose such as ``MEDIA: files`` is preserved,
+# while empty tags, extensionless absolute placeholders, and common LLM
+# placeholder tokens are stripped when they appear as standalone controls.
+MALFORMED_MEDIA_TAG_CLEANUP_RE = re.compile(
+    r'''(?m)^[^\S\n]*[`"']?MEDIA:[^\S\n]*'''
+    r'''(?P<path><[^>\n]+>|(?:~/|/|[A-Za-z]:[/\\])[^.\s\n]+|[^\s\n]*(?:placeholder|screenshot_path)[^\s\n]*)?'''
+    r'''[^\S\n]*[`"']?(?=\n|$)''',
+    re.IGNORECASE,
+)
+
 
 def get_document_cache_dir() -> Path:
     """Return the document cache directory, creating it if it doesn't exist."""
@@ -3030,24 +3041,32 @@ class BasePlatformAdapter(ABC):
                     # and dropping every other attachment in the response.
                     continue
 
-        # Remove the delivered MEDIA tags from the user-visible text. Mask a
-        # length-equal copy of ``cleaned`` (same union of protected regions) to
-        # *locate* the real tag spans, then delete exactly those spans from the
-        # *unmasked* ``cleaned``. Masking is only a locator — protected spans
-        # (code blocks, quotes, JSON-embedded MEDIA: text) must survive verbatim
-        # in the delivered text, not be blanked to whitespace. Masking
-        # ``cleaned`` (not ``content``) keeps offsets valid after the
-        # [[audio_as_voice]] / [[as_document]] directives are removed.
-        if media:
-            masked_cleaned = BasePlatformAdapter._mask_protected_spans(cleaned)
-            masked_cleaned = BasePlatformAdapter._mask_json_string_media(masked_cleaned)
-            spans = [m.span() for m in media_pattern.finditer(masked_cleaned)]
-            if spans:
-                chars = list(cleaned)
-                for start, end in sorted(spans, reverse=True):
-                    del chars[start:end]
-                cleaned = "".join(chars)
-                cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+        # Remove delivered and malformed MEDIA control tags from the
+        # user-visible text. Mask a length-equal copy of ``cleaned`` (same union
+        # of protected regions) to *locate* the real tag spans, then delete
+        # exactly those spans from the *unmasked* ``cleaned``. Masking is only a
+        # locator — protected spans (code blocks, quotes, JSON-embedded MEDIA:
+        # text) must survive verbatim in the delivered text, not be blanked to
+        # whitespace. Masking ``cleaned`` (not ``content``) keeps offsets valid
+        # after the [[audio_as_voice]] / [[as_document]] directives are removed.
+        masked_cleaned = BasePlatformAdapter._mask_protected_spans(cleaned)
+        masked_cleaned = BasePlatformAdapter._mask_json_string_media(masked_cleaned)
+        raw_spans = [m.span() for m in media_pattern.finditer(masked_cleaned)]
+        raw_spans.extend(m.span() for m in MALFORMED_MEDIA_TAG_CLEANUP_RE.finditer(masked_cleaned))
+        spans = []
+        for start, end in sorted(set(raw_spans)):
+            if start == end:
+                continue
+            if spans and start <= spans[-1][1]:
+                spans[-1] = (spans[-1][0], max(spans[-1][1], end))
+            else:
+                spans.append((start, end))
+        if spans:
+            chars = list(cleaned)
+            for start, end in sorted(spans, reverse=True):
+                del chars[start:end]
+            cleaned = "".join(chars)
+            cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
         
         return media, cleaned
 
