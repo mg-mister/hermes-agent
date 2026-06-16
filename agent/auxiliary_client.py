@@ -2453,9 +2453,20 @@ def _is_connection_error(exc: Exception) -> bool:
             return True
     except ImportError:
         pass
-    # urllib3 / httpx / httpcore connection errors
+    # urllib3 / httpx / httpcore connection errors.  ProtocolError classes
+    # may carry an empty message when a stream closes early, so match class
+    # names before falling back to message text.
     err_type = type(exc).__name__
     if any(kw in err_type for kw in ("Connection", "Timeout", "DNS", "SSL")):
+        return True
+    if err_type in {
+        "RemoteProtocolError",
+        "LocalProtocolError",
+        "ProtocolError",
+        "ReadError",
+        "WriteError",
+        "CloseError",
+    }:
         return True
     err_lower = str(exc).lower()
     if any(kw in err_lower for kw in (
