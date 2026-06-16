@@ -2707,9 +2707,24 @@ class TelegramAdapter(BasePlatformAdapter):
                     parse_mode=ParseMode.MARKDOWN_V2,
                 )
             except Exception as fmt_err:
+                fmt_err_str = str(fmt_err).lower()
                 # "Message is not modified" is a no-op, not an error
-                if "not modified" in str(fmt_err).lower():
+                if "not modified" in fmt_err_str:
                     return SendResult(success=True, message_id=message_id)
+                _permanent_markers = (
+                    "message to edit not found",
+                    "message can't be edited",
+                    "message_id_invalid",
+                    "not enough rights",
+                )
+                if any(marker in fmt_err_str for marker in _permanent_markers):
+                    logger.warning(
+                        "[%s] Permanent Telegram edit failure for message %s: %s",
+                        self.name,
+                        message_id,
+                        fmt_err,
+                    )
+                    return SendResult(success=False, error=str(fmt_err))
                 # Fallback: strip MarkdownV2 escapes and retry as clean plain text
                 logger.warning(
                     "[%s] MarkdownV2 edit failed, falling back to plain text: %s",
@@ -2792,6 +2807,20 @@ class TelegramAdapter(BasePlatformAdapter):
                     e,
                 )
                 return SendResult(success=False, error=str(e), retryable=True)
+            _permanent_markers = (
+                "message to edit not found",
+                "message can't be edited",
+                "message_id_invalid",
+                "not enough rights",
+            )
+            if any(marker in err_str for marker in _permanent_markers):
+                logger.warning(
+                    "[%s] Permanent Telegram edit failure for message %s: %s",
+                    self.name,
+                    message_id,
+                    e,
+                )
+                return SendResult(success=False, error=str(e))
             logger.error(
                 "[%s] Failed to edit Telegram message %s: %s",
                 self.name,
