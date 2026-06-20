@@ -38,8 +38,10 @@ logger = logging.getLogger(__name__)
 from hermes_time import now as _hermes_now
 from utils import atomic_replace
 
+croniter: Any = None
 try:
-    from croniter import croniter
+    from croniter import croniter as _croniter
+    croniter = _croniter
     HAS_CRONITER = True
 except ImportError:
     HAS_CRONITER = False
@@ -392,6 +394,52 @@ def _ensure_aware(dt: datetime) -> datetime:
         local_tz = datetime.now().astimezone().tzinfo
         return dt.replace(tzinfo=local_tz).astimezone(target_tz)
     return dt.astimezone(target_tz)
+
+
+def _normalize_cron_next_run_at(schedule: Dict[str, Any], next_run_at: str) -> str:
+    """Normalize stored cron next_run_at to the configured timezone wall clock.
+
+    Cron expressions describe wall-clock occurrences in Hermes' configured
+    timezone.  Some legacy records stored future cron timestamps with a stale
+    fixed/server offset (for example 10:00+02 after the profile moved to
+    Europe/Lisbon, where the correct instant is 10:00+01).  Interpreting that
+    stale value as an absolute instant makes the scheduler think the 10:00 job
+    is due at 09:00 and then schedule the real 10:00 occurrence again.
+
+    If preserving the stored wall-clock fields in the configured timezone is a
+    valid cron occurrence but the instant-converted value is not, prefer the
+    wall-clock-normalized value.  Non-cron schedules keep instant semantics.
+    """
+    if schedule.get("kind") != "cron" or not HAS_CRONITER:
+        return next_run_at
+
+    try:
+        stored = datetime.fromisoformat(next_run_at)
+    except (TypeError, ValueError):
+        return next_run_at
+
+    if stored.tzinfo is None:
+        return next_run_at
+
+    target_tz = _hermes_now().tzinfo
+    instant_in_target = stored.astimezone(target_tz)
+    wall_in_target = stored.replace(tzinfo=target_tz)
+    if wall_in_target == instant_in_target:
+        return next_run_at
+
+    expr = schedule.get("expr")
+    if not expr:
+        return next_run_at
+
+    try:
+        wall_matches = croniter.match(expr, wall_in_target)
+        instant_matches = croniter.match(expr, instant_in_target)
+    except Exception:
+        return next_run_at
+
+    if wall_matches and not instant_matches:
+        return wall_in_target.isoformat()
+    return next_run_at
 
 
 def _recoverable_oneshot_run_at(
@@ -1186,6 +1234,23 @@ def _get_due_jobs_locked() -> List[Dict[str, Any]]:
             for rj in raw_jobs:
                 if rj["id"] == job["id"]:
                     rj["next_run_at"] = recovered_next
+                    needs_save = True
+                    break
+
+        normalized_next_run = _normalize_cron_next_run_at(job.get("schedule", {}), next_run)
+        if normalized_next_run != next_run:
+            logger.info(
+                "Job '%s' had cron next_run_at with stale timezone offset; "
+                "normalizing %s to configured-timezone wall clock %s",
+                job.get("name", job["id"]),
+                next_run,
+                normalized_next_run,
+            )
+            job["next_run_at"] = normalized_next_run
+            next_run = normalized_next_run
+            for rj in raw_jobs:
+                if rj["id"] == job["id"]:
+                    rj["next_run_at"] = normalized_next_run
                     needs_save = True
                     break
 
