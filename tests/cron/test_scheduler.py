@@ -2806,6 +2806,53 @@ class TestParallelTick:
         assert seen["tg-job"] == {"platform": "telegram", "chat_id": "111"}
         assert seen["dc-job"] == {"platform": "discord", "chat_id": "222"}
 
+    def test_profile_job_does_not_leak_script_home_to_parallel_profileless_job(self, tmp_path, monkeypatch):
+        """A profile job must not retarget a simultaneous profile-less script job."""
+        from cron import scheduler
+
+        scheduler._shutdown_parallel_pool()
+        scheduler._running_job_ids.clear()
+        monkeypatch.delenv("HERMES_CRON_MAX_PARALLEL", raising=False)
+
+        root = tmp_path / ".hermes"
+        mister_home = root / "profiles" / "mister"
+        linearops_home = root / "profiles" / "linearops"
+        (mister_home / "cron").mkdir(parents=True)
+        (linearops_home / "cron").mkdir(parents=True)
+        monkeypatch.setenv("HERMES_HOME", str(mister_home))
+
+        from hermes_cli import profiles as profile_mod
+
+        monkeypatch.setattr(profile_mod, "normalize_profile_name", lambda name: name)
+        monkeypatch.setattr(
+            profile_mod,
+            "resolve_profile_env",
+            lambda name: str(linearops_home if name == "linearops" else mister_home),
+        )
+
+        seen = {}
+
+        def mock_run_job(job):
+            seen[job["id"]] = scheduler._get_hermes_home().resolve()
+            return (True, "output", "response", None)
+
+        jobs = [
+            {"id": "profile-job", "name": "profile", "deliver": "local", "profile": "linearops"},
+            {"id": "profileless-job", "name": "plain", "deliver": "local"},
+        ]
+
+        with patch("cron.scheduler.get_due_jobs", return_value=jobs), \
+             patch("cron.scheduler.advance_next_run"), \
+             patch("cron.scheduler.run_job", side_effect=mock_run_job), \
+             patch("cron.scheduler.save_job_output", return_value="/tmp/out.md"), \
+             patch("cron.scheduler._deliver_result", return_value=None), \
+             patch("cron.scheduler.mark_job_run"):
+            result = scheduler.tick(verbose=False)
+
+        assert result == 2
+        assert seen["profile-job"] == linearops_home.resolve()
+        assert seen["profileless-job"] == mister_home.resolve()
+
     def test_max_parallel_env_var(self, monkeypatch):
         """HERMES_CRON_MAX_PARALLEL=1 should restore serial behaviour."""
         monkeypatch.setenv("HERMES_CRON_MAX_PARALLEL", "1")

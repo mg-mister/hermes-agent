@@ -2703,13 +2703,12 @@ def test_build_worker_context_caps_huge_summary(kanban_home):
         conn.close()
 
 
-def test_default_spawn_does_not_auto_load_any_skill(kanban_home, monkeypatch):
-    """The dispatcher no longer auto-loads a bundled kanban skill.
+def test_default_spawn_auto_loads_builtin_worker_skills(kanban_home, monkeypatch):
+    """Workers load the Kanban patterns plus Mister programming policy.
 
-    The kanban lifecycle (formerly the kanban-worker/kanban-orchestrator
-    skills) is now injected into every worker's system prompt via
-    KANBAN_GUIDANCE, so _default_spawn must NOT append a `--skills` flag
-    when the task carries no per-task skills.
+    The mandatory Kanban lifecycle is injected into every worker's system
+    prompt via KANBAN_GUIDANCE, but the skills carry deeper worker examples and
+    the shared programming-agent routing policy.
 
     We intercept Popen to capture the argv without actually spawning a
     hermes subprocess (which would hang trying to call an LLM).
@@ -2726,6 +2725,11 @@ def test_default_spawn_does_not_auto_load_any_skill(kanban_home, monkeypatch):
         return FakeProc()
 
     monkeypatch.setattr("subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _h, skill_name: skill_name in {"kanban-worker", "mister-programming-agents"},
+    )
 
     conn = kb.connect()
     try:
@@ -2739,9 +2743,13 @@ def test_default_spawn_does_not_auto_load_any_skill(kanban_home, monkeypatch):
         conn.close()
 
     cmd = captured["cmd"]
-    assert "--skills" not in cmd, (
-        f"spawn argv should not auto-load any skill: {cmd}"
-    )
+    assert "--skills" in cmd, f"spawn argv missing --skills: {cmd}"
+    skill_names = [
+        cmd[i + 1]
+        for i, tok in enumerate(cmd)
+        if tok == "--skills" and i + 1 < len(cmd)
+    ]
+    assert skill_names[:2] == ["kanban-worker", "mister-programming-agents"], skill_names
     assert "--accept-hooks" in cmd, f"spawn argv missing --accept-hooks: {cmd}"
     assert cmd.index("--accept-hooks") < cmd.index("chat"), (
         f"--accept-hooks must come before 'chat' in argv: {cmd}"
@@ -2980,7 +2988,7 @@ def test_create_task_skills_lists_all_toolset_typos(kanban_home):
 
 def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     """Dispatcher argv must carry one `--skills X` pair per task skill,
-    in declared order. No skill is auto-loaded anymore."""
+    in addition to the built-in worker skills."""
     captured = {}
 
     class FakeProc:
@@ -2992,6 +3000,11 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
         return FakeProc()
 
     monkeypatch.setattr("subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _h, skill_name: skill_name in {"kanban-worker", "mister-programming-agents"},
+    )
 
     conn = kb.connect()
     try:
@@ -3013,8 +3026,9 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     for i, tok in enumerate(cmd):
         if tok == "--skills" and i + 1 < len(cmd):
             skill_names.append(cmd[i + 1])
-    # Only the per-task skills, in declared order — nothing auto-loaded.
-    assert skill_names == ["translation", "github-code-review"], skill_names
+    # Built-in skills first, then per-task extras in order.
+    assert skill_names[:2] == ["kanban-worker", "mister-programming-agents"], skill_names
+    assert skill_names[2:] == ["translation", "github-code-review"], skill_names
     # --skills must appear BEFORE the `chat` subcommand so argparse
     # attaches them to the top-level parser, not the subcommand.
     chat_idx = cmd.index("chat")
@@ -3026,9 +3040,8 @@ def test_default_spawn_appends_per_task_skills(kanban_home, monkeypatch):
     )
 
 
-def test_default_spawn_passes_task_skills_verbatim(kanban_home, monkeypatch):
-    """Per-task skills are passed through verbatim — there is no built-in
-    kanban skill to dedupe against anymore."""
+def test_default_spawn_dedupes_builtin_skills_from_task_skills(kanban_home, monkeypatch):
+    """If a task explicitly lists built-in skills, we don't double-pass them."""
     captured = {}
 
     class FakeProc:
@@ -3039,12 +3052,17 @@ def test_default_spawn_passes_task_skills_verbatim(kanban_home, monkeypatch):
         return FakeProc()
 
     monkeypatch.setattr("subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        kb,
+        "_worker_skill_available",
+        lambda _h, skill_name: skill_name in {"kanban-worker", "mister-programming-agents"},
+    )
 
     conn = kb.connect()
     try:
         tid = kb.create_task(
             conn, title="dup", assignee="x",
-            skills=["translation", "github-code-review"],
+            skills=["kanban-worker", "mister-programming-agents", "translation"],
         )
         task = kb.get_task(conn, tid)
         workspace = kb.resolve_workspace(task)
@@ -3058,10 +3076,98 @@ def test_default_spawn_passes_task_skills_verbatim(kanban_home, monkeypatch):
         for i, tok in enumerate(cmd)
         if tok == "--skills" and i + 1 < len(cmd)
     ]
-    # Exactly the task's skills, once each, in order — no auto-loaded extras.
-    assert skill_names == ["translation", "github-code-review"], (
-        f"unexpected --skills in argv: {cmd}"
+    worker_pairs = [
+        i for i, tok in enumerate(cmd)
+        if tok == "--skills" and i + 1 < len(cmd) and cmd[i + 1] == "kanban-worker"
+    ]
+    assert len(worker_pairs) == 1, (
+        f"kanban-worker appeared {len(worker_pairs)} times in argv: {cmd}"
     )
+    routing_pairs = [
+        i for i, tok in enumerate(cmd)
+        if tok == "--skills" and i + 1 < len(cmd) and cmd[i + 1] == "mister-programming-agents"
+    ]
+    assert len(routing_pairs) == 1, (
+        f"mister-programming-agents appeared {len(routing_pairs)} times in argv: {cmd}"
+    )
+    assert skill_names[-1] == "translation", skill_names
+
+
+def test_dispatch_ignores_missing_builtin_forced_task_skills(
+    kanban_home, all_assignees_spawnable, monkeypatch,
+):
+    """Built-in worker skills stay optional/deduped during preflight."""
+    monkeypatch.setattr(kb, "_worker_skill_available", lambda _home, _skill: False)
+
+    spawn_calls = []
+
+    def allowed_spawn(task, ws):
+        spawn_calls.append((task.id, ws))
+        return 123
+
+    conn = kb.connect()
+    try:
+        tid = kb.create_task(
+            conn,
+            title="builtin only",
+            assignee="projectwikicurator",
+            skills=["kanban-worker"],
+        )
+
+        res = kb.dispatch_once(conn, spawn_fn=allowed_spawn, failure_limit=3)
+
+        task = kb.get_task(conn, tid)
+        assert task is not None
+        assert task.status == "running"
+        assert tid not in res.auto_blocked
+        assert [call[0] for call in spawn_calls] == [tid]
+
+        run = conn.execute(
+            "SELECT outcome, summary FROM task_runs WHERE task_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (tid,),
+        ).fetchone()
+        assert run["outcome"] is None
+        assert run["summary"] is None
+    finally:
+        conn.close()
+
+
+def test_dispatch_blocks_missing_forced_task_skills_before_spawn(
+    kanban_home, all_assignees_spawnable, monkeypatch,
+):
+    """Unavailable forced task skills are deterministic preflight blockers."""
+    monkeypatch.setattr(kb, "_worker_skill_available", lambda _home, _skill: False)
+
+    spawn_calls = []
+
+    def blocked_spawn(task, ws):
+        spawn_calls.append((task.id, ws))
+        return 123
+
+    conn = kb.connect()
+    try:
+        tid = kb.create_task(
+            conn,
+            title="missing forced skill",
+            assignee="projectwikicurator",
+            skills=["project-wiki-note"],
+        )
+
+        res = kb.dispatch_once(conn, spawn_fn=blocked_spawn, failure_limit=3)
+
+        task = kb.get_task(conn, tid)
+        assert task is not None
+        assert task.status == "blocked"
+        assert tid in res.auto_blocked
+        assert spawn_calls == []
+        event = kb.list_events(conn, tid)[-1]
+        assert event.kind == "blocked"
+        reason = str((event.payload or {}).get("reason", ""))
+        assert "project-wiki-note" in reason
+        assert "unavailable to assignee profile" in reason
+    finally:
+        conn.close()
 
 
 def test_cli_create_skill_flag_repeatable(kanban_home):
